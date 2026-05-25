@@ -1,0 +1,68 @@
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ─── Node ────────────────────────────────────────────────────────────────────
+node_modules/
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+.npm
+.eslintcache
+.parcel-cache/
+
+# ─── Env & secrets ───────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ─── DB locali ───────────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+pfship_local.db
+
+# ─── IDE/OS ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Build artifacts ─────────────────────────────────────────────────────────
+*.log
+logs/
+coverage/
+.coverage
+htmlcov/
+
+# ─── Uploads / storage temporanei ────────────────────────────────────────────
+uploads/
+storage/
+tmp/
+
+# ─── Samples pesanti ─────────────────────────────────────────────────────────
+samples/*.docx
+samples/*.eml
+backend/test_docs/
+
+# ─── AIS API (npm) ───────────────────────────────────────────────────────────
+ais-api/node_modules/
+ais-api/dist/
+ais-api/.env
