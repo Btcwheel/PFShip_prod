@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -13,9 +14,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Gestione PFship", version="1.0.0", lifespan=lifespan)
 
+origins_env = os.getenv("CORS_ORIGINS", "http://localhost:5250")
+origins = [o.strip() for o in origins_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5250"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
