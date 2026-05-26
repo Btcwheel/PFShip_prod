@@ -46,7 +46,7 @@ export default function AIConsolePage() {
     const outputs = [
       "Analisi in corso…",
       "Recupero dati dal contesto pratica…",
-      "Elaborazione con modello Claude Sonnet 4.6…",
+      "Elaborazione con modello Quixel Ai…",
       "Validazione output in corso…",
       "Master Orchestrator: verifico coerenza con stato pratica…",
     ];
@@ -80,7 +80,7 @@ export default function AIConsolePage() {
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Master Orchestrator · {AGENTS.length} agenti specializzati · Claude Sonnet 4.6
+            Master Orchestrator · {AGENTS.length} agenti specializzati · Quixel Ai
           </p>
         </div>
         <div className="flex gap-2">

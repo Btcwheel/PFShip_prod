@@ -43,7 +43,7 @@ export default function ImpostazioniPage() {
           <div className="flex items-center justify-between"><Label>Gate umano su fatture</Label><Switch defaultChecked /></div>
           <div className="flex items-center justify-between"><Label>Notifica cliente automatica per trasporti</Label><Switch defaultChecked /></div>
           <div className="grid grid-cols-2 gap-4 pt-2">
-            <div className="space-y-2"><Label>Modello AI</Label><Select defaultValue="claude-sonnet-4-6"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="claude-sonnet-4-6">Claude Sonnet 4.6</SelectItem><SelectItem value="claude-opus-4">Claude Opus 4</SelectItem></SelectContent></Select></div>
+            <div className="space-y-2"><Label>Modello AI</Label><Select defaultValue="quixel-ai"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="quixel-ai">Quixel Ai</SelectItem></SelectContent></Select></div>
             <div className="space-y-2"><Label>Budget mensile AI (€)</Label><Input defaultValue="500" type="number" /></div>
           </div>
         </CardContent>
