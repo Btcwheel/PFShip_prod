@@ -1,13 +1,57 @@
 from dotenv import load_dotenv
 import os
+import re
 
 load_dotenv()
 
-MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
-MYSQL_PORT = int(os.getenv("MYSQL_PORT", 3306))
-MYSQL_USER = os.getenv("MYSQL_USER", "root")
-MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
-MYSQL_DB = os.getenv("MYSQL_DB", "pfship")
+# Railway automatically injects MYSQL_URL / MYSQL_PRIVATE_URL
+# when a MySQL service is in the same project.
+_mysql_url = (
+    os.environ.get("MYSQL_PRIVATE_URL")
+    or os.environ.get("MYSQL_URL")
+    or ""
+)
+
+if _mysql_url:
+    # Parse railway-style URL: mysql://user:pass@host:port/db
+    match = re.match(
+        r"mysql:\/\/(?P<user>[^:]+):(?P<pass>[^@]+)@(?P<host>[^:/]+):(?P<port>\d+)\/(?P<db>.+)",
+        _mysql_url,
+    )
+    if match:
+        MYSQL_HOST = match.group("host")
+        MYSQL_PORT = int(match.group("port"))
+        MYSQL_USER = match.group("user")
+        MYSQL_PASSWORD = match.group("pass")
+        MYSQL_DB = match.group("db")
+    else:
+        MYSQL_HOST = "mysql.railway.internal"
+        MYSQL_PORT = 3306
+        MYSQL_USER = "root"
+        MYSQL_PASSWORD = ""
+        MYSQL_DB = "railway"
+else:
+    # Fallback: individual env vars or defaults
+    MYSQL_HOST = (
+        os.environ.get("MYSQL_HOST")
+        or os.environ.get("MYSQLHOST")
+        or "mysql.railway.internal"
+    )
+    MYSQL_PORT = int(
+        os.environ.get("MYSQL_PORT") or os.environ.get("MYSQLPORT") or "3306"
+    )
+    MYSQL_USER = (
+        os.environ.get("MYSQL_USER") or os.environ.get("MYSQLUSER") or "root"
+    )
+    MYSQL_PASSWORD = (
+        os.environ.get("MYSQL_PASSWORD") or os.environ.get("MYSQLPASSWORD") or ""
+    )
+    MYSQL_DB = (
+        os.environ.get("MYSQL_DB")
+        or os.environ.get("MYSQLDATABASE")
+        or os.environ.get("MYSQL_DATABASE")
+        or "railway"
+    )
 
 SQLITE_PATH = os.getenv("SQLITE_PATH", "./pfship_local.db")
 
