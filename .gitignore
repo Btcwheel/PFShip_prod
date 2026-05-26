@@ -62,6 +62,9 @@ samples/*.docx
 samples/*.eml
 backend/test_docs/
 
+# ─── Windows reserved names ─────────────────────────────────────────────────
+backend/NUL
+
 # ─── AIS API (npm) ───────────────────────────────────────────────────────────
 ais-api/node_modules/
 ais-api/dist/
