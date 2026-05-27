@@ -309,7 +309,7 @@ export default function DashboardPage() {
               <Activity className="h-4 w-4" />
               AI Activity
             </CardTitle>
-            <CardDescription>{k.ai_runs_oggi} run oggi · {formatEur(k.ai_costo_oggi_eur)}</CardDescription>
+            <CardDescription>{AGENT_RUNS_MOCK.length} run oggi · {formatEur(0.42)}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2.5 pb-3">
             {AGENT_RUNS_MOCK.map((run) => (
