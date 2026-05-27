@@ -57,9 +57,14 @@ const DOCS_RACC = ['Packing declaration', 'Certificato di origine']
 export default function Agenti() {
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
-  const [pratica, setPratica] = useState(null) // dati pratica corrente
+  const [pratica, setPratica] = useState(null)
   const [praticaId, setPraticaId] = useState(null)
   const [pratiche, setPratiche] = useState([])
+
+  // Inbox email
+  const [inboxEmails, setInboxEmails] = useState([])
+  const [inboxStatus, setInboxStatus] = useState(null)
+  const [selectedEmail, setSelectedEmail] = useState(null)
 
   // Step 1
   const [emailTesto, setEmailTesto] = useState('')
@@ -82,6 +87,7 @@ export default function Agenti() {
   const [emailCliente, setEmailCliente] = useState('')
   const [bozzaRichiesta, setBozzaRichiesta] = useState('')
   const [lingua4, setLingua4] = useState('italiano')
+  const [noteExtra4, setNoteExtra4] = useState('')
 
   // Step 5
   const [docRicevuti, setDocRicevuti] = useState([])
@@ -116,9 +122,21 @@ export default function Agenti() {
   const [numFattura, setNumFattura] = useState('')
   const [istruzioniCoge, setIstruzioniCoge] = useState('')
 
+  // Carica inbox emails
   useEffect(() => {
+    api.get('/agenti/inbox/emails').then(r => setInboxEmails(r.data.emails || [])).catch(() => {})
+    api.get('/agenti/inbox/status').then(r => setInboxStatus(r.data)).catch(() => {})
     api.get('/agenti/pratiche').then(r => setPratiche(r.data)).catch(() => {})
   }, [praticaId])
+
+  // Refresh inbox ogni 30s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      api.get('/agenti/inbox/emails').then(r => setInboxEmails(r.data.emails || [])).catch(() => {})
+      api.get('/agenti/inbox/status').then(r => setInboxStatus(r.data)).catch(() => {})
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   async function call(endpoint, body, onSuccess) {
     setLoading(true)
@@ -136,17 +154,29 @@ export default function Agenti() {
     }
   }
 
-  async function handleEmlUpload(e) {
-    const file = e.target.files[0]
-    if (!file) return
+  async function processEmailFromInbox(emailData) {
+    setSelectedEmail(emailData)
+    setEmailMeta({
+      mittente: emailData.mittente,
+      destinatari: emailData.destinatari,
+      oggetto: emailData.oggetto,
+      data: emailData.data,
+      allegati: emailData.allegati || [],
+    })
+    setEmailTesto(emailData.corpo)
+  }
+
+  async function analizzaEmailDaInbox() {
+    if (!selectedEmail) return
     setLoading(true)
     try {
-      const form = new FormData()
-      form.append('file', file)
-      const { data } = await api.post('/agenti/step1/upload-eml', form)
-      setEmailMeta(data)
-      setEmailTesto(data.corpo)
-    } catch { alert('Errore nel parsing EML') }
+      const { data } = await api.post('/agenti/inbox/process', { uid: selectedEmail.uid })
+      setDati(data.dati_estratti)
+      setRichiestaBooking(data.dati_estratti?.richiesta_booking_carrier || '')
+      if (data.dati_estratti?.compagnia_preferita) setCompagniaConfermata(data.dati_estratti.compagnia_preferita)
+      if (data.dati_estratti?.spedizione?.nave_richiesta) setNaveConfermata(data.dati_estratti.spedizione.nave_richiesta)
+      if (data.dati_estratti?.spedizione?.eta_italia_richiesta) setEtaConfermata(data.dati_estratti.spedizione.eta_italia_richiesta)
+    } catch { alert('Errore nell\'analisi email') }
     setLoading(false)
   }
 
@@ -161,6 +191,7 @@ export default function Agenti() {
     setBozzeEmail9(''); setDataConsegna(''); setNoteConsegna('')
     setRiepilogoConsegna(''); setIstruzioniFattura(''); setFattPrecedenti([])
     setNumFattura(''); setIstruzioniCoge('')
+    setSelectedEmail(null)
   }
 
   function riprendi(p) {
@@ -193,6 +224,8 @@ export default function Agenti() {
 
   const sp = dati?.spedizione || {}
   const cl = dati?.cliente || {}
+
+  const emailNonProcessate = inboxEmails.filter(e => e.status === 'received')
 
   // ── Render step content ──────────────────────────────────────────────────
   return (
@@ -240,13 +273,61 @@ export default function Agenti() {
         {step === 1 && (
           <div>
             <h3 className="font-semibold text-gray-800 mb-1">📧 Step 1 — Ordine dal cliente / agente Cina</h3>
-            <p className="text-xs text-gray-400 mb-4">Carica la mail dell'ordine ricevuta. L'AI estrae i dati e genera la richiesta di booking da inviare alla compagnia di navigazione.</p>
+            <p className="text-xs text-gray-400 mb-4">Seleziona un'email dall'inbox. L'AI estrae i dati e genera la richiesta di booking da inviare alla compagnia di navigazione.</p>
 
-            <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-blue-300 rounded-xl cursor-pointer bg-blue-50 hover:bg-blue-100 transition-colors mb-3">
-              <span className="text-sm font-medium text-blue-700">{loading ? 'Parsing...' : 'Carica file .eml'}</span>
-              <span className="text-xs text-blue-400">oppure incolla il testo sotto</span>
-              <input type="file" className="hidden" onChange={handleEmlUpload} />
-            </label>
+            {/* Inbox status */}
+            {inboxStatus && (
+              <div className="bg-gray-50 rounded-lg p-3 text-xs mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${inboxStatus.running ? 'bg-green-500' : 'bg-gray-400'}`} />
+                  <span className="text-gray-600">
+                    {inboxStatus.total_emails} email ricevute
+                    {emailNonProcessate.length > 0 && (
+                      <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">
+                        {emailNonProcessate.length} nuove
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <span className="text-gray-400">
+                  Ultimo polling: {inboxStatus.last_poll ? new Date(inboxStatus.last_poll).toLocaleTimeString('it-IT') : 'Mai'}
+                </span>
+              </div>
+            )}
+
+            {/* Lista email inbox */}
+            {inboxEmails.length > 0 && (
+              <div className="mb-4">
+                <p className="text-xs font-medium text-gray-500 mb-2">Email ricevute:</p>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {inboxEmails.map((email, idx) => (
+                    <div
+                      key={email.uid || idx}
+                      onClick={() => processEmailFromInbox(email)}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        selectedEmail?.uid === email.uid
+                          ? 'border-blue-500 bg-blue-50'
+                          : email.status === 'received'
+                          ? 'border-gray-200 bg-white hover:bg-gray-50'
+                          : 'border-gray-100 bg-gray-50 opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {email.status === 'received' && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                          <span className="text-sm font-medium text-gray-800 truncate max-w-[200px]">{email.mittente}</span>
+                        </div>
+                        <span className="text-xs text-gray-400">{email.data ? new Date(email.data).toLocaleDateString('it-IT') : ''}</span>
+                      </div>
+                      <p className="text-xs text-gray-600 mt-1 truncate">{email.oggetto}</p>
+                      {email.status === 'processed' && (
+                        <span className="text-xs text-green-600 mt-1">✓ Processata</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {emailMeta && (
               <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-1 mb-3">
@@ -261,7 +342,7 @@ export default function Agenti() {
             )}
 
             <textarea value={emailTesto} onChange={e => setEmailTesto(e.target.value)}
-              rows={emailMeta ? 3 : 7} placeholder="Incolla testo email ordine..."
+              rows={emailMeta ? 3 : 7} placeholder="Seleziona un'email dall'inbox o incolla il testo qui..."
               className={`${inputCls} resize-none font-mono text-xs mb-3`} />
 
             {richiestBooking && (
@@ -278,18 +359,21 @@ export default function Agenti() {
               {dati && !richiestBooking && (
                 <button onClick={() => avanza(2)} className={btnCls}>Avanti →</button>
               )}
+              <button onClick={analizzaEmailDaInbox}
+                disabled={loading || !selectedEmail} className={btnCls}>
+                {loading ? 'Analisi...' : richiestBooking ? '↺ Rigenera' : 'Analizza ordine →'}
+              </button>
               <button onClick={() => call('/agenti/step1/leggi-email',
                 { testo_email: emailTesto, allegati: emailMeta?.allegati || [] },
                 d => {
                   setDati(d.dati_estratti)
                   setRichiestaBooking(d.dati_estratti?.richiesta_booking_carrier || '')
-                  // Pre-compila compagnia se suggerita
                   if (d.dati_estratti?.compagnia_preferita) setCompagniaConfermata(d.dati_estratti.compagnia_preferita)
                   if (d.dati_estratti?.spedizione?.nave_richiesta) setNaveConfermata(d.dati_estratti.spedizione.nave_richiesta)
                   if (d.dati_estratti?.spedizione?.eta_italia_richiesta) setEtaConfermata(d.dati_estratti.spedizione.eta_italia_richiesta)
                 }
-              )} disabled={loading || !emailTesto.trim()} className={btnCls}>
-                {loading ? 'Analisi...' : richiestBooking ? '↺ Rigenera' : 'Analizza ordine →'}
+              )} disabled={loading || !emailTesto.trim()} className={btn2Cls}>
+                {loading ? 'Analisi...' : 'Analizza (testo)'}
               </button>
               {richiestBooking && (
                 <button onClick={() => avanza(2)} className={btnCls}>Avanti — inserisci booking →</button>
@@ -386,7 +470,7 @@ export default function Agenti() {
             {analisiNave && <AnalisiBox testo={analisiNave} />}
             <div className="flex gap-3 justify-end mt-4">
               <button onClick={() => call('/agenti/step3/monitora-nave',
-                { pratica_id: praticaId, mmsi: mmsi || null, nave: sp.nave, eta_dichiarata: sp.eta_italia },
+                { pratica_id: praticaId, mmsi: mmsi || null },
                 d => setAnalisiNave(d.analisi)
               )} disabled={loading} className={btn2Cls}>
                 {loading ? '...' : '🔄 Aggiorna tracking'}
@@ -400,15 +484,21 @@ export default function Agenti() {
         {step === 4 && (
           <div>
             <h3 className="font-semibold text-gray-800 mb-3">📬 Step 4 — Richiedi documenti al cliente</h3>
+            <p className="text-xs text-gray-400 mb-3">Email cliente e dati di spedizione letti automaticamente dalla pratica e dall'anagrafica (Ge.DO).</p>
+            {emailCliente && (
+              <div className="mb-3 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700">
+                📧 Email trovata in anagrafica: <strong>{emailCliente}</strong>
+              </div>
+            )}
             <div className="flex gap-2 mb-3">
-              <input value={emailCliente} onChange={e => setEmailCliente(e.target.value)}
-                placeholder="Email cliente" type="email" className={inputCls} />
               <select value={lingua4} onChange={e => setLingua4(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0">
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="italiano">🇮🇹 Italiano</option>
                 <option value="inglese">🇬🇧 English</option>
                 <option value="cinese">🇨🇳 中文</option>
               </select>
+              <input value={noteExtra4} onChange={e => setNoteExtra4(e.target.value)}
+                placeholder="Note aggiuntive (opzionale)" className={inputCls} />
             </div>
             {bozzaRichiesta && (
               <div className="mb-3">
@@ -421,9 +511,9 @@ export default function Agenti() {
             )}
             <div className="flex gap-3 justify-end">
               <button onClick={() => call('/agenti/step4/richiedi-documenti',
-                { pratica_id: praticaId, cliente_nome: cl.nome, cliente_email: emailCliente, eta_nave: sp.eta_italia, n_container: sp.n_container, lingua: lingua4 },
-                d => setBozzaRichiesta(d.bozza_email)
-              )} disabled={loading || !emailCliente} className={btn2Cls}>
+                { pratica_id: praticaId, lingua: lingua4, note_extra: noteExtra4 },
+                d => { setBozzaRichiesta(d.bozza_email); if (d.email_cliente) setEmailCliente(d.email_cliente) }
+              )} disabled={loading} className={btn2Cls}>
                 {loading ? '...' : '📝 Genera email'}
               </button>
               <button onClick={() => avanza(5)} className={btnCls}>Avanti →</button>
@@ -471,7 +561,7 @@ export default function Agenti() {
             {risultatoDoc?.azione && <><AnalisiBox testo={risultatoDoc.azione} /><CopyBtn testo={risultatoDoc.azione} /></>}
             <div className="flex gap-3 justify-end mt-3">
               <button onClick={() => call('/agenti/step5/controlla-documenti',
-                { pratica_id: praticaId, cliente: cl.nome, email_cliente: emailCliente || 'n/d', eta_nave: sp.eta_italia, documenti_ricevuti: docRicevuti, note_anomalie: noteAnomalie, lingua: lingua5 },
+                { pratica_id: praticaId, documenti_ricevuti: docRicevuti, note_anomalie: noteAnomalie, lingua: lingua5 },
                 d => setRisultatoDoc(d)
               )} disabled={loading} className={btn2Cls}>
                 {loading ? '...' : 'Verifica'}
@@ -627,10 +717,11 @@ export default function Agenti() {
         {step === 7 && (
           <div>
             <h3 className="font-semibold text-gray-800 mb-3">🚢 Step 7 — Richiesta Delivery Order</h3>
+            <p className="text-xs text-gray-400 mb-3">B/L, booking, compagnia e cliente letti automaticamente dalla pratica.</p>
             {istruzioniDO && <AnalisiBox testo={istruzioniDO} />}
             <div className="flex gap-3 justify-end mt-3">
               <button onClick={() => call('/agenti/step7/delivery-order',
-                { pratica_id: praticaId, bl_number: dati?.bl_number || '', booking_number: sp.booking_number, compagnia: dati?.compagnia_navigazione || 'Maersk', cliente: cl.nome, n_container: sp.n_container },
+                { pratica_id: praticaId },
                 d => setIstruzioniDO(d.istruzioni)
               )} disabled={loading} className={btn2Cls}>
                 {loading ? '...' : '📝 Genera richiesta'}
@@ -654,7 +745,7 @@ export default function Agenti() {
             {istruzioniPag && <AnalisiBox testo={istruzioniPag} />}
             <div className="flex gap-3 justify-end mt-3">
               <button onClick={() => call('/agenti/step8/pagamento-fatture',
-                { pratica_id: praticaId, compagnia: dati?.compagnia_navigazione || 'Maersk', importo_fattura: parseFloat(importoFattura) || 0, valuta: 'USD' },
+                { pratica_id: praticaId, importo_fattura: parseFloat(importoFattura) || 0, valuta: 'USD' },
                 d => setIstruzioniPag(d.istruzioni)
               )} disabled={loading} className={btn2Cls}>
                 {loading ? '...' : '📋 Istruzioni pagamento'}
@@ -668,13 +759,17 @@ export default function Agenti() {
         {step === 9 && (
           <div>
             <h3 className="font-semibold text-gray-800 mb-3">🚛 Step 9 — Prenotazione trasportatore</h3>
-            <input value={indirizzoConsegna} onChange={e => setIndirizzoConsegna(e.target.value)}
-              placeholder="Indirizzo consegna cliente" className={`${inputCls} mb-3`} />
+            <p className="text-xs text-gray-400 mb-3">Indirizzo consegna letto da Ge.DO (anagrafica MySQL). Email e dati pratica ripresi automaticamente.</p>
+            {indirizzoConsegna && (
+              <div className="mb-3 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700">
+                📍 Indirizzo da anagrafica: <strong>{indirizzoConsegna}</strong>
+              </div>
+            )}
             {bozzeEmail9 && <><AnalisiBox testo={bozzeEmail9} /><CopyBtn testo={bozzeEmail9} /></>}
             <div className="flex gap-3 justify-end mt-3">
               <button onClick={() => call('/agenti/step9/prenota-trasportatore',
-                { pratica_id: praticaId, cliente: cl.nome, email_cliente: emailCliente || '', indirizzo_consegna: indirizzoConsegna, n_container: sp.n_container, eta_nave: sp.eta_italia },
-                d => setBozzeEmail9(d.bozze_email)
+                { pratica_id: praticaId },
+                d => { setBozzeEmail9(d.bozze_email); if (d.indirizzo_consegna) setIndirizzoConsegna(d.indirizzo_consegna) }
               )} disabled={loading} className={btn2Cls}>
                 {loading ? '...' : '📝 Genera email'}
               </button>
@@ -696,7 +791,7 @@ export default function Agenti() {
             {riepilogoConsegna && <><AnalisiBox testo={riepilogoConsegna} /><CopyBtn testo={riepilogoConsegna} /></>}
             <div className="flex gap-3 justify-end mt-3">
               <button onClick={() => call('/agenti/step10/conferma-consegna',
-                { pratica_id: praticaId, cliente: cl.nome, data_consegna: dataConsegna, note_consegna: noteConsegna },
+                { pratica_id: praticaId, data_consegna: dataConsegna, note_consegna: noteConsegna },
                 d => setRiepilogoConsegna(d.riepilogo)
               )} disabled={loading} className={btn2Cls}>
                 {loading ? '...' : '📋 Genera riepilogo'}
@@ -721,7 +816,7 @@ export default function Agenti() {
             {istruzioniFattura && <AnalisiBox testo={istruzioniFattura} />}
             <div className="flex gap-3 justify-end mt-3">
               <button onClick={() => call('/agenti/step11/fatturazione',
-                { pratica_id: praticaId, cliente: cl.nome, n_container: sp.n_container, descrizione_merce: sp.descrizione_merce, data_consegna: dataConsegna },
+                { pratica_id: praticaId, data_consegna: dataConsegna },
                 d => { setIstruzioniFattura(d.istruzioni); setFattPrecedenti(d.fatture_precedenti || []) }
               )} disabled={loading} className={btn2Cls}>
                 {loading ? '...' : '📊 Genera istruzioni fattura'}
@@ -740,7 +835,7 @@ export default function Agenti() {
             {istruzioniCoge && <AnalisiBox testo={istruzioniCoge} />}
             <div className="flex gap-3 justify-end mt-3">
               <button onClick={() => call('/agenti/step12/registra-contabilita',
-                { pratica_id: praticaId, cliente: cl.nome, importo_fattura: parseFloat(importoFattura) || 0, numero_fattura: numFattura },
+                { pratica_id: praticaId, importo_fattura: parseFloat(importoFattura) || 0, numero_fattura: numFattura },
                 d => setIstruzioniCoge(d.istruzioni)
               )} disabled={loading} className={btn2Cls}>
                 {loading ? '...' : '📋 Istruzioni Ge.CO'}

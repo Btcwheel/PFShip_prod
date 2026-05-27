@@ -13,13 +13,15 @@ from sqlalchemy import text
 from pydantic import BaseModel
 from typing import Optional
 from anthropic import Anthropic
-from app.database import get_mysql, get_sqlite
+from app.database import get_mysql, get_sqlite, get_pratica
+from app.config import AIS_BASE_URL
 from app.auth import get_current_user
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.email_service import check_new_emails_imap, mark_email_read_imap, send_email_smtp
+from app.email_poller import get_inbox_status, get_inbox_emails, get_email_by_uid, mark_email_processed
 
 router = APIRouter(prefix="/api/agenti", tags=["agenti"])
 
-AIS_BASE = "http://localhost:5001"
 anthropic = Anthropic()
 
 
@@ -81,6 +83,43 @@ def parse_json_safe(text: str) -> dict:
             return {"errore": "parsing fallito", "raw": raw[:300]}
 
 
+def _lookup_gedoanag(mysql_db, nome: str = None, piva: str = None) -> dict | None:
+    """Cerca un soggetto in gedoanag per nome o P.IVA. Restituisce None se non trovato."""
+    try:
+        if piva:
+            row = mysql_db.execute(text(
+                "SELECT id, ragi_socia, email, indirizzo, localita, provincia, part_iva "
+                "FROM gedoanag WHERE part_iva = :piva AND (cancellato = 0 OR cancellato IS NULL) LIMIT 1"
+            ), {"piva": piva}).fetchone()
+            if row:
+                return dict(row._mapping)
+        if nome:
+            row = mysql_db.execute(text(
+                "SELECT id, ragi_socia, email, indirizzo, localita, provincia, part_iva "
+                "FROM gedoanag WHERE ragi_socia LIKE :n AND (cancellato = 0 OR cancellato IS NULL) LIMIT 1"
+            ), {"n": f"%{nome[:25]}%"}).fetchone()
+            if row:
+                return dict(row._mapping)
+    except Exception:
+        pass
+    return None
+
+
+async def _aggiorna_step(db: AsyncSession, pratica_id: int, step: int, extra: dict = None):
+    """Aggiorna step_corrente (e opzionalmente altri campi) sulla pratica."""
+    try:
+        params = {"step": step, "id": pratica_id}
+        set_clause = "step_corrente = :step"
+        if extra:
+            for k, v in extra.items():
+                set_clause += f", {k} = :{k}"
+                params[k] = v
+        await db.execute(text(f"UPDATE pratiche SET {set_clause} WHERE id = :id"), params)
+        await db.commit()
+    except Exception:
+        pass
+
+
 # ─── STEP 1a: Upload EML ────────────────────────────────────────────────────
 
 @router.post("/step1/upload-eml")
@@ -127,6 +166,111 @@ async def step1_upload_eml(file: UploadFile = File(...), user=Depends(get_curren
         "corpo": corpo[:6000],
         "allegati": allegati_estratti,
     }
+
+
+# ─── INBOX EMAIL (nuovo sistema IMAP) ───────────────────────────────────────
+
+@router.get("/inbox/status")
+async def inbox_status(user=Depends(get_current_user)):
+    """Restituisce lo stato dell'inbox email."""
+    return get_inbox_status()
+
+
+@router.get("/inbox/emails")
+async def inbox_emails(user=Depends(get_current_user)):
+    """Restituisce tutte le email ricevute."""
+    return {"emails": get_inbox_emails()}
+
+
+@router.get("/inbox/emails/{uid}")
+async def inbox_email_detail(uid: str, user=Depends(get_current_user)):
+    """Restituisce i dettagli di una email specifica."""
+    email_data = get_email_by_uid(uid)
+    if not email_data:
+        raise HTTPException(status_code=404, detail="Email non trovata")
+    return email_data
+
+
+class ProcessEmailInput(BaseModel):
+    uid: str
+
+@router.post("/inbox/process")
+async def inbox_process_email(body: ProcessEmailInput, user=Depends(get_current_user)):
+    """Processa un'email dall'inbox per estrarre dati spedizione."""
+    email_data = get_email_by_uid(body.uid)
+    if not email_data:
+        raise HTTPException(status_code=404, detail="Email non trovata")
+    
+    # Usa la stessa logica di step1/leggi-email ma con dati dall'inbox
+    ESCLUDI = ("(contenuto non estraibile)", "[Errore estrazione")
+    testo_allegati = ""
+    for a in (email_data.get("allegati") or []):
+        if not isinstance(a, dict):
+            continue
+        testo = a.get("testo", "")
+        nome = a.get("nome", "")
+        if any(testo.startswith(e) for e in ESCLUDI):
+            continue
+        testo_allegati += f"\n\n--- ALLEGATO: {nome} ---\n{testo[:2000]}"
+    
+    risposta = ai(f"""Sei un operatore di PF Ship Srl, agenzia spedizioni di Napoli.
+Hai ricevuto questa email da un cliente italiano o dal tuo agente in Cina con un ordine di spedizione.
+Devi estrarre tutti i dati per preparare la richiesta di booking alla compagnia di navigazione.
+
+EMAIL:
+{email_data.get("corpo", "")[:3000]}
+{testo_allegati[:6000]}
+
+Rispondi SOLO con JSON valido:
+{{
+  "tipo_richiesta": "ordine_spedizione",
+  "cliente": {{"nome": "...", "paese": "IT", "email": null, "piva": null, "telefono": null}},
+  "shipper": {{"nome": null, "paese": "CN", "indirizzo": null}},
+  "consegnatario": {{"nome": null, "indirizzo": null, "citta": null}},
+  "spedizione": {{
+    "booking_number": null,
+    "n_container": null,
+    "tipo_container": null,
+    "peso_totale_kg": null,
+    "descrizione_merce": null,
+    "hs_codes": [],
+    "porto_carico": null,
+    "porto_scarico": "NAPOLI",
+    "nave_richiesta": null,
+    "data_carico_richiesta": null,
+    "eta_italia_richiesta": null
+  }},
+  "compagnia_preferita": null,
+  "note_cliente": null,
+  "urgenza": "alta",
+  "richiesta_booking_carrier": "testo della email da inviare alla compagnia di navigazione per aprire il booking, in inglese, professionale"
+}}""", max_tokens=2500)
+    
+    # Segna come processata
+    mark_email_processed(body.uid)
+    
+    return {
+        "step": 1,
+        "stato": "ordine_analizzato",
+        "dati_estratti": parse_json_safe(risposta),
+        "operatore": user["sub"],
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+class SendEmailInput(BaseModel):
+    to: str
+    subject: str
+    body: str
+    html_body: Optional[str] = None
+
+@router.post("/email/send")
+async def send_email(body: SendEmailInput, user=Depends(get_current_user)):
+    """Invia una email (bozza approvata) via SMTP."""
+    success = await send_email_smtp(body.to, body.subject, body.body, body.html_body)
+    if not success:
+        raise HTTPException(status_code=500, detail="Errore nell'invio email")
+    return {"ok": True, "timestamp": datetime.now().isoformat()}
 
 
 # ─── STEP 1: Analisi email → estrai dati spedizione ─────────────────────────
@@ -202,30 +346,17 @@ class AperturaPraticaInput(BaseModel):
     allegati: Optional[list] = []
 
 @router.post("/step2/apri-pratica")
-async def step2_apri_pratica(body: AperturaPraticaInput, db: AsyncSession = Depends(get_sqlite), user=Depends(get_current_user)):
-    await db.execute(text("""
-        CREATE TABLE IF NOT EXISTS pratiche (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cliente TEXT, paese_origine TEXT, shipper TEXT,
-            n_container INTEGER, tipo_container TEXT,
-            peso_totale_kg REAL, descrizione_merce TEXT,
-            porto_carico TEXT, porto_scarico TEXT,
-            nave TEXT, viaggio TEXT,
-            compagnia_navigazione TEXT, bl_number TEXT, booking_number TEXT,
-            eta_italia TEXT, etd_cina TEXT,
-            stato TEXT DEFAULT 'aperta', urgenza TEXT DEFAULT 'alta',
-            step_corrente INTEGER DEFAULT 2,
-            note TEXT, operatore TEXT,
-            allegati_json TEXT,
-            creata_il TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """))
-
+async def step2_apri_pratica(
+    body: AperturaPraticaInput,
+    db: AsyncSession = Depends(get_sqlite),
+    mysql_db: Session = Depends(get_mysql),
+    user=Depends(get_current_user)
+):
     sp = body.dati_spedizione.get("spedizione", {})
     cl = body.dati_spedizione.get("cliente", {})
     sh = body.dati_spedizione.get("shipper", {})
+    conseg = body.dati_spedizione.get("consegnatario", {})
 
-    # I campi confermati dal carrier sovrascrivono quelli dall'ordine
     if body.booking_number_confermato:
         sp["booking_number"] = body.booking_number_confermato
     if body.compagnia_navigazione:
@@ -235,7 +366,13 @@ async def step2_apri_pratica(body: AperturaPraticaInput, db: AsyncSession = Depe
     if body.eta_confermata:
         sp["eta_italia"] = body.eta_confermata
 
-    # Salva solo allegati con testo utile
+    # Cerca il cliente/consegnatario in gedoanag per arricchire la pratica
+    gedoanag_row = _lookup_gedoanag(mysql_db, nome=cl.get("nome"), piva=cl.get("piva"))
+    gedoanag_id = gedoanag_row["id"] if gedoanag_row else None
+    # Usa email/P.IVA da MySQL se non presenti nell'ordine
+    cliente_email = cl.get("email") or (gedoanag_row.get("email") if gedoanag_row else None)
+    consignee_piva = cl.get("piva") or (gedoanag_row.get("part_iva") if gedoanag_row else None)
+
     ESCLUDI = ("(contenuto non estraibile)", "[Errore")
     allegati_utili = [
         a for a in (body.allegati or [])
@@ -244,12 +381,17 @@ async def step2_apri_pratica(body: AperturaPraticaInput, db: AsyncSession = Depe
     ]
 
     result = await db.execute(text("""
-        INSERT INTO pratiche (cliente, paese_origine, shipper, n_container, tipo_container,
+        INSERT INTO pratiche (
+            cliente, paese_origine, shipper, n_container, tipo_container,
             peso_totale_kg, descrizione_merce, porto_carico, porto_scarico,
             nave, viaggio, compagnia_navigazione, bl_number, booking_number,
-            eta_italia, etd_cina, urgenza, note, operatore, step_corrente, allegati_json)
-        VALUES (:cliente,:paese,:shipper,:n_cont,:tipo_cont,:peso,:merce,:porto_c,:porto_s,
-                :nave,:viaggio,:compagnia,:bl,:booking,:eta,:etd,:urgenza,:note,:operatore,2,:allegati)
+            eta_italia, etd_cina, urgenza, note, operatore, step_corrente,
+            allegati_json, consignee, consignee_piva, gedoanag_id
+        ) VALUES (
+            :cliente,:paese,:shipper,:n_cont,:tipo_cont,:peso,:merce,:porto_c,:porto_s,
+            :nave,:viaggio,:compagnia,:bl,:booking,:eta,:etd,:urgenza,:note,:operatore,2,
+            :allegati,:consignee,:consignee_piva,:gedoanag_id
+        )
     """), {
         "cliente": cl.get("nome",""), "paese": cl.get("paese",""),
         "shipper": sh.get("nome","") if sh else "",
@@ -263,7 +405,10 @@ async def step2_apri_pratica(body: AperturaPraticaInput, db: AsyncSession = Depe
         "eta": sp.get("eta_italia",""), "etd": sp.get("etd_cina",""),
         "urgenza": body.dati_spedizione.get("urgenza","alta"),
         "note": body.note_operatore, "operatore": user["sub"],
-        "allegati": json.dumps(allegati_utili, ensure_ascii=False)
+        "allegati": json.dumps(allegati_utili, ensure_ascii=False),
+        "consignee": conseg.get("nome",""),
+        "consignee_piva": consignee_piva or "",
+        "gedoanag_id": gedoanag_id,
     })
     await db.commit()
     pratica_id = result.lastrowid
@@ -285,6 +430,7 @@ Firma: PF Ship Srl - Import Dept""", max_tokens=500)
     return {
         "step": 2, "stato": "pratica_aperta",
         "pratica_id": pratica_id,
+        "gedoanag_collegato": gedoanag_id is not None,
         "booking_confirmation": booking_conf,
         "timestamp": datetime.now().isoformat()
     }
@@ -299,30 +445,40 @@ class MonitoraggioInput(BaseModel):
     eta_dichiarata: Optional[str] = None
 
 @router.post("/step3/monitora-nave")
-async def step3_monitora_nave(body: MonitoraggioInput, user=Depends(get_current_user)):
+async def step3_monitora_nave(
+    body: MonitoraggioInput,
+    db: AsyncSession = Depends(get_sqlite),
+    user=Depends(get_current_user)
+):
+    p = await get_pratica(body.pratica_id, db)
+
+    # I parametri espliciti sovrascrivono quelli della pratica
+    nave = body.nave or p.get("nave_attuale") or p.get("nave") or "N/D"
+    eta = body.eta_dichiarata or p.get("eta_italia") or "N/D"
+    mmsi = body.mmsi
+
     ais_data = None
-    if body.mmsi:
+    if mmsi:
         async with httpx.AsyncClient(timeout=20) as client:
             try:
-                resp = await client.get(f"{AIS_BASE}/ais/mt/{body.mmsi}/location/latest")
+                resp = await client.get(f"{AIS_BASE_URL}/ais/mt/{mmsi}/location/latest")
                 ais_data = resp.json()
             except:
                 ais_data = None
 
-    # Mock realistico se AIS non disponibile
     if not ais_data:
         ais_data = {
-            "mock": True, "mmsi": body.mmsi or "N/D",
-            "vessel_name": body.nave or "BANGKOK EXPRESS",
+            "mock": True, "mmsi": mmsi or "N/D",
+            "vessel_name": nave,
             "lat": 36.5, "lon": 14.8,
             "speed": 18.4, "destination": "NAPLES",
-            "eta": body.eta_dichiarata or "2026-01-28",
+            "eta": eta,
             "status": "Under way using engine",
             "distance_to_naples_nm": 420
         }
 
     analisi = ai(f"""Operatore doganale PF Ship Srl. Pratica #{body.pratica_id}.
-Nave: {body.nave or 'N/D'} - ETA dichiarata: {body.eta_dichiarata or 'N/D'}
+Nave: {nave} - ETA dichiarata: {eta}
 Dati AIS: {json.dumps(ais_data)}
 
 Calcola e rispondi in italiano:
@@ -332,9 +488,12 @@ Calcola e rispondi in italiano:
 4. Segnala se c'è ritardo rispetto all'ETA dichiarata
 Sii conciso.""", max_tokens=300)
 
+    await _aggiorna_step(db, body.pratica_id, 3)
+
     return {
         "step": 3, "stato": "nave_monitorata",
         "pratica_id": body.pratica_id,
+        "nave": nave, "eta": eta,
         "ais": ais_data, "analisi": analisi,
         "timestamp": datetime.now().isoformat()
     }
@@ -344,19 +503,36 @@ Sii conciso.""", max_tokens=300)
 
 class RichiestaDocInput(BaseModel):
     pratica_id: int
-    cliente_nome: str
-    cliente_email: str
-    eta_nave: Optional[str] = ""
-    n_container: Optional[int] = 0
     lingua: Optional[str] = "italiano"
+    note_extra: Optional[str] = ""
 
 @router.post("/step4/richiedi-documenti")
-async def step4_richiedi_documenti(body: RichiestaDocInput, user=Depends(get_current_user)):
+async def step4_richiedi_documenti(
+    body: RichiestaDocInput,
+    db: AsyncSession = Depends(get_sqlite),
+    mysql_db: Session = Depends(get_mysql),
+    user=Depends(get_current_user)
+):
+    p = await get_pratica(body.pratica_id, db)
+
+    cliente_nome = p.get("cliente","")
+    eta_nave = p.get("eta_italia","")
+    n_container = p.get("n_container",0)
+
+    # Email cliente: cerca in gedoanag se disponibile
+    cliente_email = ""
+    if p.get("gedoanag_id"):
+        anag = _lookup_gedoanag(mysql_db, piva=p.get("consignee_piva"))
+        if not anag:
+            anag = _lookup_gedoanag(mysql_db, nome=cliente_nome)
+        cliente_email = (anag or {}).get("email","") or ""
+
     email_richiesta = ai(f"""PF Ship Srl Napoli, pratica #{body.pratica_id}.
 Genera email professionale in {body.lingua} per richiedere documentazione di sdoganamento a:
-Cliente: {body.cliente_nome} - Email: {body.cliente_email}
-ETA nave a Napoli: {body.eta_nave}
-N° container: {body.n_container}
+Cliente: {cliente_nome}{(' - Email: ' + cliente_email) if cliente_email else ''}
+ETA nave a Napoli: {eta_nave}
+N° container: {n_container}
+{('Note: ' + body.note_extra) if body.note_extra else ''}
 
 Documenti da richiedere:
 1. Fattura commerciale (in inglese, con valori doganali)
@@ -368,10 +544,13 @@ Documenti da richiedere:
 Spiega l'urgenza (arrivo nave tra circa 2 settimane).
 Oggetto + corpo email. Firma: Ufficio Import PF Ship Srl""", max_tokens=500)
 
+    await _aggiorna_step(db, body.pratica_id, 4)
+
     return {
         "step": 4, "stato": "documenti_richiesti",
         "pratica_id": body.pratica_id,
-        "email_cliente": body.cliente_email,
+        "cliente": cliente_nome,
+        "email_cliente": cliente_email,
         "bozza_email": email_richiesta,
         "timestamp": datetime.now().isoformat()
     }
@@ -381,15 +560,27 @@ Oggetto + corpo email. Firma: Ufficio Import PF Ship Srl""", max_tokens=500)
 
 class DocumentiInput(BaseModel):
     pratica_id: int
-    cliente: str
-    email_cliente: str
-    eta_nave: Optional[str] = ""
     documenti_ricevuti: list[str]
     note_anomalie: Optional[str] = ""
     lingua: Optional[str] = "italiano"
 
 @router.post("/step5/controlla-documenti")
-async def step5_controlla_documenti(body: DocumentiInput, user=Depends(get_current_user)):
+async def step5_controlla_documenti(
+    body: DocumentiInput,
+    db: AsyncSession = Depends(get_sqlite),
+    mysql_db: Session = Depends(get_mysql),
+    user=Depends(get_current_user)
+):
+    p = await get_pratica(body.pratica_id, db)
+
+    cliente_nome = p.get("cliente","")
+    eta_nave = p.get("eta_italia","")
+
+    cliente_email = ""
+    if p.get("gedoanag_id"):
+        anag = _lookup_gedoanag(mysql_db, nome=cliente_nome)
+        cliente_email = (anag or {}).get("email","") or ""
+
     obbligatori = ["Fattura commerciale", "Packing list", "Polizza di carico (B/L)"]
     raccomandati = ["Packing declaration", "Certificato di origine"]
 
@@ -397,18 +588,23 @@ async def step5_controlla_documenti(body: DocumentiInput, user=Depends(get_curre
     mancanti_racc = [d for d in raccomandati if d not in body.documenti_ricevuti]
     stato = "BLOCCATO" if mancanti_obb else ("INCOMPLETO" if mancanti_racc else "OK")
 
-    azione = ai(f"""Esperto doganale PF Ship Srl. Pratica #{body.pratica_id} - {body.cliente}
-ETA nave: {body.eta_nave}
+    destinatario = f"{cliente_nome}{(' (' + cliente_email + ')') if cliente_email else ''}"
+    azione = ai(f"""Esperto doganale PF Ship Srl. Pratica #{body.pratica_id} - {cliente_nome}
+ETA nave: {eta_nave}
 Documenti ricevuti: {', '.join(body.documenti_ricevuti) or 'Nessuno'}
 Mancanti obbligatori: {', '.join(mancanti_obb) or 'Nessuno'}
 Anomalie: {body.note_anomalie or 'Nessuna'}
 Stato: {stato}
 
-{"Genera email di sollecito/correzione in " + body.lingua + " per " + body.cliente + " (" + body.email_cliente + ") con oggetto e corpo." if stato != "OK" else "Conferma completezza e indica prossimi step operativi (bolla doganale)."}""", max_tokens=600)
+{"Genera email di sollecito/correzione in " + body.lingua + " per " + destinatario + " con oggetto e corpo." if stato != "OK" else "Conferma completezza e indica prossimi step operativi (bolla doganale)."}""", max_tokens=600)
+
+    await _aggiorna_step(db, body.pratica_id, 5)
 
     return {
         "step": 5, "stato": stato,
         "pratica_id": body.pratica_id,
+        "cliente": cliente_nome,
+        "email_cliente": cliente_email,
         "mancanti_obbligatori": mancanti_obb,
         "mancanti_raccomandati": mancanti_racc,
         "azione": azione,
@@ -423,13 +619,8 @@ class BollaInput(BaseModel):
 
 @router.post("/step6/bolla-doganale")
 async def step6_bolla_doganale(body: BollaInput, db: AsyncSession = Depends(get_sqlite), user=Depends(get_current_user)):
-    # Recupera pratica e allegati dal DB
-    result = await db.execute(text("SELECT * FROM pratiche WHERE id = :id"), {"id": body.pratica_id})
-    pratica = result.fetchone()
-    if not pratica:
-        raise HTTPException(status_code=404, detail="Pratica non trovata")
+    p = await get_pratica(body.pratica_id, db)
 
-    p = dict(pratica._mapping)
     allegati = []
     if p.get("allegati_json"):
         try:
@@ -442,13 +633,16 @@ async def step6_bolla_doganale(body: BollaInput, db: AsyncSession = Depends(get_
         for a in allegati if a.get("testo")
     )
 
+    # Usa nave_attuale se presente (trasbordo), altrimenti nave originale
+    nave_trasporto = p.get("nave_attuale") or p.get("nave","")
+
     risposta = ai(f"""Sei un esperto doganale italiano. Devi pre-compilare la bolla doganale per PRADO.
 
 DATI PRATICA:
 - Cliente/Importatore: {p.get('consignee', p.get('cliente',''))} — P.IVA: {p.get('consignee_piva','')}
 - Shipper/Esportatore: {p.get('shipper','')}
 - N° container: {p.get('n_container','')} x {p.get('tipo_container','')} — {p.get('container_number','')} sigillo {p.get('seal_number','')}
-- Nave: {p.get('nave','')} - Viaggio: {p.get('viaggio','')}
+- Nave: {nave_trasporto} - Viaggio: {p.get('viaggio','')}
 - Porto carico: {p.get('porto_carico','')} → Porto scarico: {p.get('porto_scarico','')}
 - MBL: {p.get('bl_number','')} — HBL: {p.get('hbl_number','')}
 - Invoice: {p.get('invoice_number','')} — Valore FOB: EUR {p.get('valore_merce_eur',0)}
@@ -507,6 +701,7 @@ Estrai dai documenti e restituisci SOLO un JSON con questa struttura:
 }}""", max_tokens=3000)
 
     bolla = parse_json_safe(risposta)
+    await _aggiorna_step(db, body.pratica_id, 6)
 
     return {
         "step": 6,
@@ -521,30 +716,42 @@ Estrai dai documenti e restituisci SOLO un JSON con questa struttura:
 
 class DeliveryOrderInput(BaseModel):
     pratica_id: int
-    bl_number: str
-    booking_number: Optional[str] = ""
-    compagnia: str
-    cliente: str
-    n_container: int
+    note: Optional[str] = ""
 
 @router.post("/step7/delivery-order")
-async def step7_delivery_order(body: DeliveryOrderInput, user=Depends(get_current_user)):
+async def step7_delivery_order(
+    body: DeliveryOrderInput,
+    db: AsyncSession = Depends(get_sqlite),
+    user=Depends(get_current_user)
+):
+    p = await get_pratica(body.pratica_id, db)
+
+    bl_number = p.get("bl_number","")
+    booking_number = p.get("booking_number","")
+    compagnia = p.get("compagnia_navigazione","")
+    cliente = p.get("cliente","")
+    n_container = p.get("n_container",0)
+
     istruzioni = ai(f"""Operatore PF Ship Srl. Pratica #{body.pratica_id}.
-Richiesta delivery order a {body.compagnia}:
-B/L: {body.bl_number} | Booking: {body.booking_number}
-Cliente: {body.cliente} | Container: {body.n_container}
+Richiesta delivery order a {compagnia}:
+B/L: {bl_number} | Booking: {booking_number}
+Cliente: {cliente} | Container: {n_container}
+{('Note: ' + body.note) if body.note else ''}
 
 Genera:
-1. Testo email/richiesta formale a {body.compagnia} per il delivery order
+1. Testo email/richiesta formale a {compagnia} per il delivery order
 2. Checklist pre-richiesta (fatture da pagare, documenti necessari)
 3. Cosa verificare prima di inviare la richiesta
-4. Tempi attesi di risposta da {body.compagnia}
+4. Tempi attesi di risposta da {compagnia}
 Professionale e specifico.""", max_tokens=600)
+
+    await _aggiorna_step(db, body.pratica_id, 7)
 
     return {
         "step": 7, "stato": "delivery_order_richiesto",
         "pratica_id": body.pratica_id,
-        "bl_number": body.bl_number,
+        "bl_number": bl_number,
+        "compagnia": compagnia,
         "istruzioni": istruzioni,
         "timestamp": datetime.now().isoformat()
     }
@@ -554,27 +761,36 @@ Professionale e specifico.""", max_tokens=600)
 
 class PagamentoInput(BaseModel):
     pratica_id: int
-    compagnia: str
     importo_fattura: Optional[float] = 0
     valuta: Optional[str] = "USD"
     note: Optional[str] = ""
 
 @router.post("/step8/pagamento-fatture")
-async def step8_pagamento(body: PagamentoInput, user=Depends(get_current_user)):
+async def step8_pagamento(
+    body: PagamentoInput,
+    db: AsyncSession = Depends(get_sqlite),
+    user=Depends(get_current_user)
+):
+    p = await get_pratica(body.pratica_id, db)
+    compagnia = p.get("compagnia_navigazione","")
+
     istruzioni = ai(f"""Operatore contabile PF Ship Srl. Pratica #{body.pratica_id}.
-Ricezione fattura da {body.compagnia}: {body.valuta} {body.importo_fattura}
-Note: {body.note}
+Ricezione fattura da {compagnia}: {body.valuta} {body.importo_fattura}
+Note: {body.note or 'Nessuna'}
 
 Genera checklist per:
 1. Verifica fattura (voci, importi, riferimenti B/L)
 2. Procedura di pagamento internazionale
 3. Registrazione in contabilità
-4. Dopo il pagamento: cosa richiedere a {body.compagnia}
+4. Dopo il pagamento: cosa richiedere a {compagnia}
 Conciso e operativo.""", max_tokens=400)
+
+    await _aggiorna_step(db, body.pratica_id, 8)
 
     return {
         "step": 8, "stato": "pagamento_gestito",
         "pratica_id": body.pratica_id,
+        "compagnia": compagnia,
         "istruzioni": istruzioni,
         "timestamp": datetime.now().isoformat()
     }
@@ -584,21 +800,48 @@ Conciso e operativo.""", max_tokens=400)
 
 class TrasportatoreInput(BaseModel):
     pratica_id: int
-    cliente: str
-    email_cliente: str
-    indirizzo_consegna: Optional[str] = ""
-    n_container: int
-    eta_nave: Optional[str] = ""
+    note: Optional[str] = ""
 
 @router.post("/step9/prenota-trasportatore")
-async def step9_trasportatore(body: TrasportatoreInput, user=Depends(get_current_user)):
-    email_cliente = ai(f"""PF Ship Srl. Pratica #{body.pratica_id}.
+async def step9_trasportatore(
+    body: TrasportatoreInput,
+    db: AsyncSession = Depends(get_sqlite),
+    mysql_db: Session = Depends(get_mysql),
+    user=Depends(get_current_user)
+):
+    p = await get_pratica(body.pratica_id, db)
+
+    cliente_nome = p.get("cliente","")
+    n_container = p.get("n_container",0)
+    eta_nave = p.get("eta_italia","")
+
+    # Indirizzo consegna: da gedoanag se disponibile, fallback da pratica
+    cliente_email = ""
+    indirizzo_consegna = ""
+    if p.get("gedoanag_id"):
+        anag = _lookup_gedoanag(mysql_db, piva=p.get("consignee_piva"), nome=cliente_nome)
+        if anag:
+            cliente_email = anag.get("email","") or ""
+            loc = anag.get("localita","")
+            ind = anag.get("indirizzo","")
+            indirizzo_consegna = f"{ind}, {loc}".strip(", ")
+    if not indirizzo_consegna:
+        # Fallback: consignee dalla pratica
+        consignee_nome = p.get("consignee","")
+        if consignee_nome:
+            anag2 = _lookup_gedoanag(mysql_db, nome=consignee_nome)
+            if anag2:
+                cliente_email = cliente_email or anag2.get("email","") or ""
+                indirizzo_consegna = f"{anag2.get('indirizzo','')}, {anag2.get('localita','')}".strip(", ")
+
+    email_bozze = ai(f"""PF Ship Srl. Pratica #{body.pratica_id}.
 Ricezione delivery order confermata. Contatta il cliente per confermare data consegna.
 
-Cliente: {body.cliente} ({body.email_cliente})
-Indirizzo: {body.indirizzo_consegna}
-N° container: {body.n_container}
-ETA nave: {body.eta_nave}
+Cliente: {cliente_nome}{(' (' + cliente_email + ')') if cliente_email else ''}
+Indirizzo consegna: {indirizzo_consegna or 'da confermare con cliente'}
+N° container: {n_container}
+ETA nave: {eta_nave}
+{('Note: ' + body.note) if body.note else ''}
 
 Genera:
 1. Email al cliente per concordare data/ora consegna
@@ -606,10 +849,15 @@ Genera:
 3. Email al trasportatore per prenotare il ritiro dal porto
 Tutto in italiano, professionale.""", max_tokens=600)
 
+    await _aggiorna_step(db, body.pratica_id, 9)
+
     return {
         "step": 9, "stato": "trasportatore_prenotato",
         "pratica_id": body.pratica_id,
-        "bozze_email": email_cliente,
+        "cliente": cliente_nome,
+        "email_cliente": cliente_email,
+        "indirizzo_consegna": indirizzo_consegna,
+        "bozze_email": email_bozze,
         "timestamp": datetime.now().isoformat()
     }
 
@@ -618,16 +866,22 @@ Tutto in italiano, professionale.""", max_tokens=600)
 
 class ConsegnaInput(BaseModel):
     pratica_id: int
-    cliente: str
     data_consegna: Optional[str] = ""
     note_consegna: Optional[str] = ""
 
 @router.post("/step10/conferma-consegna")
-async def step10_consegna(body: ConsegnaInput, user=Depends(get_current_user)):
+async def step10_consegna(
+    body: ConsegnaInput,
+    db: AsyncSession = Depends(get_sqlite),
+    user=Depends(get_current_user)
+):
+    p = await get_pratica(body.pratica_id, db)
+    cliente = p.get("cliente","")
+
     riepilogo = ai(f"""PF Ship Srl. Pratica #{body.pratica_id} - consegna effettuata.
-Cliente: {body.cliente}
+Cliente: {cliente}
 Data consegna: {body.data_consegna}
-Note: {body.note_consegna}
+Note: {body.note_consegna or 'Nessuna'}
 
 Genera:
 1. Email di conferma consegna al cliente
@@ -635,9 +889,12 @@ Genera:
 3. Istruzioni per passare pratica alla contabilità per fatturazione
 In italiano, professionale.""", max_tokens=500)
 
+    await _aggiorna_step(db, body.pratica_id, 10, extra={"stato": "consegnata"})
+
     return {
         "step": 10, "stato": "consegna_confermata",
         "pratica_id": body.pratica_id,
+        "cliente": cliente,
         "riepilogo": riepilogo,
         "timestamp": datetime.now().isoformat()
     }
@@ -647,45 +904,58 @@ In italiano, professionale.""", max_tokens=500)
 
 class FatturazioneInput(BaseModel):
     pratica_id: int
-    cliente: str
-    n_container: int
-    descrizione_merce: str
     data_consegna: Optional[str] = ""
 
 @router.post("/step11/fatturazione")
-async def step11_fatturazione(body: FatturazioneInput, db: Session = Depends(get_mysql), user=Depends(get_current_user)):
-    # Cerca tariffe cliente in Ge.FA
+async def step11_fatturazione(
+    body: FatturazioneInput,
+    db: AsyncSession = Depends(get_sqlite),
+    mysql_db: Session = Depends(get_mysql),
+    user=Depends(get_current_user)
+):
+    p = await get_pratica(body.pratica_id, db)
+
+    cliente = p.get("cliente","")
+    n_container = p.get("n_container",0)
+    tipo_container = p.get("tipo_container","") or "40HC"
+    descrizione_merce = p.get("descrizione_merce","")
+    bl_number = p.get("bl_number","")
+
     tariffe = []
     try:
-        rows = db.execute(text("""
+        rows = mysql_db.execute(text("""
             SELECT desc_clien, tipo_fattu, impo_impon, importo, anno_fattu
             FROM gefadcts
             WHERE desc_clien LIKE :cliente
               AND (cancellato = 0 OR cancellato IS NULL)
             ORDER BY anno_fattu DESC, id DESC
             LIMIT 5
-        """), {"cliente": f"%{body.cliente[:20]}%"}).fetchall()
+        """), {"cliente": f"%{cliente[:20]}%"}).fetchall()
         tariffe = [dict(r._mapping) for r in rows]
     except:
         pass
 
     istruzioni = ai(f"""Contabile PF Ship Srl. Pratica #{body.pratica_id}.
-Cliente: {body.cliente}
-Spedizione: {body.n_container} container - {body.descrizione_merce}
+Cliente: {cliente}
+Spedizione: {n_container} container {tipo_container} - {descrizione_merce}
+B/L: {bl_number}
 Data consegna: {body.data_consegna}
 
 Fatture precedenti trovate in Ge.FA: {json.dumps(tariffe, default=str) if tariffe else 'Nessuna trovata'}
 
 Genera:
-1. Voci da fatturare tipiche per una spedizione import da Cina ({body.n_container} container 40HC)
+1. Voci da fatturare tipiche per una spedizione import da Cina ({n_container} container {tipo_container})
    (nolo marittimo, spese portuali, dogana, handling, trasporto, diritti)
 2. Istruzioni per emettere fattura su Ge.FA
 3. Riferimenti da indicare in fattura (B/L, n° pratica, ecc.)
 In italiano.""", max_tokens=600)
 
+    await _aggiorna_step(db, body.pratica_id, 11)
+
     return {
         "step": 11, "stato": "fatturazione_preparata",
         "pratica_id": body.pratica_id,
+        "cliente": cliente,
         "fatture_precedenti": tariffe,
         "istruzioni": istruzioni,
         "timestamp": datetime.now().isoformat()
@@ -696,30 +966,51 @@ In italiano.""", max_tokens=600)
 
 class ContabilitaInput(BaseModel):
     pratica_id: int
-    cliente: str
     importo_fattura: Optional[float] = 0
     numero_fattura: Optional[str] = ""
 
 @router.post("/step12/registra-contabilita")
-async def step12_contabilita(body: ContabilitaInput, db: Session = Depends(get_mysql), user=Depends(get_current_user)):
-    # Cerca cliente in Ge.CO
+async def step12_contabilita(
+    body: ContabilitaInput,
+    db: AsyncSession = Depends(get_sqlite),
+    mysql_db: Session = Depends(get_mysql),
+    user=Depends(get_current_user)
+):
+    p = await get_pratica(body.pratica_id, db)
+
+    cliente = p.get("cliente","")
+    invoice_number = p.get("invoice_number","") or body.numero_fattura
+
+    # Cerca in Ge.CO: prima per P.IVA, poi per nome
     soggetto = None
     try:
-        row = db.execute(text("""
-            SELECT ragi_socia, codi_conto, indirizzo, localita
-            FROM cogeanag
-            WHERE ragi_socia LIKE :nome
-              AND (cancellato = 0 OR cancellato IS NULL)
-            LIMIT 1
-        """), {"nome": f"%{body.cliente[:20]}%"}).fetchone()
-        if row:
-            soggetto = dict(row._mapping)
+        consignee_piva = p.get("consignee_piva","")
+        if consignee_piva:
+            row = mysql_db.execute(text("""
+                SELECT ragi_socia, codi_conto, indirizzo, localita
+                FROM cogeanag
+                WHERE codi_fisca = :piva OR codi_fisca LIKE :piva2
+                  AND (cancellato = 0 OR cancellato IS NULL)
+                LIMIT 1
+            """), {"piva": consignee_piva, "piva2": f"%{consignee_piva}%"}).fetchone()
+            if row:
+                soggetto = dict(row._mapping)
+        if not soggetto:
+            row = mysql_db.execute(text("""
+                SELECT ragi_socia, codi_conto, indirizzo, localita
+                FROM cogeanag
+                WHERE ragi_socia LIKE :nome
+                  AND (cancellato = 0 OR cancellato IS NULL)
+                LIMIT 1
+            """), {"nome": f"%{cliente[:20]}%"}).fetchone()
+            if row:
+                soggetto = dict(row._mapping)
     except:
         pass
 
     istruzioni = ai(f"""Contabile PF Ship Srl. Chiusura pratica #{body.pratica_id}.
-Cliente: {body.cliente}
-Importo fattura: €{body.importo_fattura} | N° fattura: {body.numero_fattura}
+Cliente: {cliente}
+Importo fattura: €{body.importo_fattura} | N° fattura: {invoice_number}
 Dati Ge.CO: {json.dumps(soggetto, default=str) if soggetto else 'Cliente da verificare in anagrafica'}
 
 Genera istruzioni per:
@@ -729,9 +1020,12 @@ Genera istruzioni per:
 4. Chiusura definitiva pratica e archiviazione
 In italiano, operativo.""", max_tokens=500)
 
+    await _aggiorna_step(db, body.pratica_id, 12, extra={"stato": "chiusa"})
+
     return {
         "step": 12, "stato": "pratica_chiusa",
         "pratica_id": body.pratica_id,
+        "cliente": cliente,
         "soggetto_coge": soggetto,
         "istruzioni": istruzioni,
         "timestamp": datetime.now().isoformat()

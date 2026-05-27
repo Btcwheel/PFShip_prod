@@ -3,11 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.database import init_sqlite
 from app.routers import auth, anagrafiche, manifesti, dashboard, tickets, fatture, agenti
+from app.email_poller import start_poller
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_sqlite()
+    start_poller()
     yield
 
 

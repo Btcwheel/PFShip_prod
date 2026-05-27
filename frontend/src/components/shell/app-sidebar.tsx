@@ -43,10 +43,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { useAuth, DEMO_USERS } from "@/lib/auth-store";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/brand/logo";
-import type { Role } from "@/lib/types";
+import { getToken, clearToken } from "@/lib/api";
 
 const NAV_OPERATIONS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -66,34 +65,38 @@ const NAV_AI = [
 ];
 
 const NAV_ADMIN = [
-  { label: "Utenti & Team", href: "/admin/utenti", icon: Users, role: "admin" as Role },
-  { label: "Ruoli & Permessi", href: "/admin/ruoli", icon: ShieldCheck, role: "admin" as Role },
-  { label: "Audit Log", href: "/admin/audit", icon: ScrollText, role: "admin" as Role },
-  { label: "Impostazioni", href: "/admin/impostazioni", icon: Settings, role: "admin" as Role },
+  { label: "Utenti & Team", href: "/admin/utenti", icon: Users },
+  { label: "Ruoli & Permessi", href: "/admin/ruoli", icon: ShieldCheck },
+  { label: "Audit Log", href: "/admin/audit", icon: ScrollText },
+  { label: "Impostazioni", href: "/admin/impostazioni", icon: Settings },
 ];
 
 export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout, switchRole } = useAuth();
   const { theme, setTheme } = useTheme();
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
 
   const handleLogout = () => {
-    logout();
+    clearToken();
     router.push("/login");
   };
 
-  const initials = user?.name
-    .split(" ")
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+  const token = getToken() || "";
+  const userSub = (() => {
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      return payload;
+    } catch {
+      return { sub: "User", email: "", cognome: "" };
+    }
+  })();
 
-  const filteredAdmin = NAV_ADMIN.filter((item) => user?.role === item.role);
+  const initials = userSub.sub
+    ? userSub.sub.substring(0, 2).toUpperCase()
+    : "U";
 
   return (
     <Sidebar collapsible="icon" className="border-r">
@@ -180,27 +183,25 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {filteredAdmin.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Sistema</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {filteredAdmin.map((item) => (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      render={<Link href={item.href} />}
-                      isActive={isActive(item.href)}
-                      tooltip={item.label}
-                    >
-                        <item.icon />
-                        <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+        <SidebarGroup>
+          <SidebarGroupLabel>Sistema</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {NAV_ADMIN.map((item) => (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton
+                    render={<Link href={item.href} />}
+                    isActive={isActive(item.href)}
+                    tooltip={item.label}
+                  >
+                      <item.icon />
+                      <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">
@@ -215,13 +216,9 @@ export function AppSidebar() {
                     </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium">{user?.name}</span>
+                    <span className="truncate font-medium">{userSub.sub}</span>
                     <span className="truncate text-xs text-muted-foreground">
-                      {user?.role === "admin"
-                        ? "Super Admin"
-                        : user?.role === "manager"
-                        ? "Manager Reparto"
-                        : "Operatore"}
+                      {userSub.email || "pfship.agent@quixel.it"}
                     </span>
                   </div>
                   <ChevronUp className="ml-auto h-4 w-4" />
@@ -232,27 +229,6 @@ export function AppSidebar() {
                 align="end"
                 className="min-w-56 rounded-lg"
               >
-                <DropdownMenuLabel>Demo — cambia ruolo</DropdownMenuLabel>
-                {(Object.keys(DEMO_USERS) as Role[]).map((r) => (
-                  <DropdownMenuItem
-                    key={r}
-                    onClick={() => {
-                      switchRole(r);
-                      router.refresh();
-                    }}
-                  >
-                    {r === "admin" && <ShieldCheck className="h-4 w-4" />}
-                    {r === "manager" && <Users className="h-4 w-4" />}
-                    {r === "operator" && <Settings className="h-4 w-4" />}
-                    {DEMO_USERS[r].name}
-                    {user?.role === r && (
-                      <Badge variant="secondary" className="ml-auto text-[10px]">
-                        attivo
-                      </Badge>
-                    )}
-                  </DropdownMenuItem>
-                ))}
-                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                 >

@@ -8,30 +8,29 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { DEMO_USERS, useAuth } from "@/lib/auth-store";
+import { login } from "@/lib/api";
 import { Eye, EyeOff, Loader2, ShieldCheck, Users, Briefcase } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Role } from "@/lib/types";
 
-const ROLE_CARDS: { role: Role; title: string; subtitle: string; icon: React.ElementType; gradient: string }[] = [
+const ROLE_USERS: { role: string; username: string; title: string; icon: React.ElementType; gradient: string }[] = [
   {
     role: "admin",
-    title: "Super Admin",
-    subtitle: "Accesso completo a tutti i moduli e reparti",
+    username: "V000173",
+    title: "Admin",
     icon: ShieldCheck,
     gradient: "from-blue-500/15 to-cyan-500/10",
   },
   {
     role: "manager",
-    title: "Manager Reparto",
-    subtitle: "Supervisiona il proprio team e workflow",
+    username: "V000173",
+    title: "Manager",
     icon: Users,
     gradient: "from-emerald-500/15 to-teal-500/10",
   },
   {
     role: "operator",
+    username: "V000173",
     title: "Operatore",
-    subtitle: "Gestisce le proprie pratiche operative",
     icon: Briefcase,
     gradient: "from-amber-500/15 to-orange-500/10",
   },
@@ -39,28 +38,35 @@ const ROLE_CARDS: { role: Role; title: string; subtitle: string; icon: React.Ele
 
 export default function LoginPage() {
   const router = useRouter();
-  const { isAuthenticated, switchRole } = useAuth();
-  const [email, setEmail] = useState("f.esposito@pfship.it");
-  const [password, setPassword] = useState("demo2026");
+  const [username, setUsername] = useState("V000173");
+  const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<Role>("admin");
+  const [error, setError] = useState("");
+  const [selectedRole, setSelectedRole] = useState("admin");
 
   useEffect(() => {
-    if (isAuthenticated) router.replace("/dashboard");
-  }, [isAuthenticated, router]);
+    const token = localStorage.getItem("pfship_token");
+    if (token) router.replace("/dashboard");
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
-    switchRole(selectedRole);
-    router.push("/dashboard");
+    setError("");
+    try {
+      await login(username, password);
+      router.push("/dashboard");
+    } catch (err: any) {
+      setError(err.message || "Credenziali errate");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleRoleSelect = (role: Role) => {
+  const handleRoleSelect = (role: string) => {
     setSelectedRole(role);
-    setEmail(DEMO_USERS[role].email);
+    setUsername(ROLE_USERS.find(r => r.role === role)?.username || "V000173");
   };
 
   return (
@@ -155,14 +161,19 @@ export default function LoginPage() {
               </div>
 
               <form onSubmit={handleLogin} className="space-y-4">
+                {error && (
+                  <div className="bg-destructive/10 border border-destructive/30 rounded-lg px-3 py-2 text-sm text-destructive">
+                    {error}
+                  </div>
+                )}
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="username">Username</Label>
                   <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
+                    id="username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    autoComplete="username"
                     required
                   />
                 </div>
@@ -170,12 +181,6 @@ export default function LoginPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="password">Password</Label>
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground hover:text-primary"
-                    >
-                      Hai dimenticato la password?
-                    </button>
                   </div>
                   <div className="relative">
                     <Input
@@ -184,7 +189,7 @@ export default function LoginPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       autoComplete="current-password"
-                      required
+                      placeholder="Lascia vuoto se non impostata"
                     />
                     <button
                       type="button"

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import {
@@ -39,13 +40,8 @@ import {
   Bar,
   Legend,
 } from "recharts";
-import {
-  KPI_MOCK,
-  FATTURATO_12M,
-  CARICO_PER_REPARTO,
-  PRATICHE_MOCK,
-  AGENT_RUNS_MOCK,
-} from "@/lib/mock-data";
+import { getDashboardStats, getPratiche, getInboxStatus, type DashboardStats } from "@/lib/api";
+import { PRATICHE_MOCK, AGENT_RUNS_MOCK } from "@/lib/mock-data";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
@@ -65,10 +61,45 @@ function formatEur(n: number) {
 }
 
 export default function DashboardPage() {
-  const k = KPI_MOCK;
-  const pratiche_urgenti = PRATICHE_MOCK
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [pratiche, setPratiche] = useState<any[]>([]);
+  const [inboxStatus, setInboxStatus] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      getDashboardStats().catch(() => null),
+      getPratiche().catch(() => []),
+      getInboxStatus().catch(() => null),
+    ]).then(([s, p, i]) => {
+      setStats(s);
+      setPratiche(p);
+      setInboxStatus(i);
+      setLoading(false);
+    });
+  }, []);
+
+  const pratiche_urgenti = pratiche
     .filter((p) => p.urgenza === "critica" || p.urgenza === "alta")
     .slice(0, 5);
+
+  const fatturatoMese = stats?.fatturato_anno
+    ? stats.fatturato_anno / 12
+    : 0;
+
+  const chartData = (stats?.fatturato_per_anno || []).map((r) => ({
+    mese: String(r.anno_fattu),
+    fatturato: r.totale,
+    num_fatture: r.num_fatture,
+  }));
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Caricamento dashboard...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -132,35 +163,35 @@ export default function DashboardPage() {
       {/* KPI Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
-          title="Pratiche attive"
-          value={k.pratiche_aperte}
+          title="Fatture totali"
+          value={stats?.totale_fatture || 0}
           icon={Briefcase}
-          delta={`+${k.pratiche_chiuse_mese} chiuse questo mese`}
+          delta={`${stats?.fatture_anno || 0} nel ${new Date().getFullYear()}`}
           deltaPositive
           gradient="from-blue-500/10 to-cyan-500/5"
         />
         <KpiCard
-          title="Container"
-          value={k.container_in_transito + k.container_in_terminal}
+          title="Anagrafiche"
+          value={stats?.totale_anagrafiche || 0}
           icon={ContainersIcon}
-          delta={`${k.container_in_transito} in transito · ${k.container_in_terminal} in terminal`}
+          delta={`${stats?.totale_coge || 0} soggetti CoGe`}
           gradient="from-emerald-500/10 to-teal-500/5"
         />
         <KpiCard
-          title="Fatturato mese"
-          value={formatEur(k.fatturato_mese_eur)}
+          title="Fatturato anno"
+          value={formatEur(stats?.fatturato_anno || 0)}
           valueAsString
           icon={Euro}
-          delta={`+${k.fatturato_mese_delta_pct}% vs mese scorso`}
+          delta={`${stats?.fatturato_per_anno?.[1]?.num_fatture || 0} fatture anno scorso`}
           deltaPositive
           gradient="from-violet-500/10 to-purple-500/5"
         />
         <KpiCard
-          title="ETA in ritardo"
-          value={k.eta_in_ritardo}
+          title="Pratiche (SQLite)"
+          value={pratiche.length}
           icon={AlertTriangle}
-          delta={`Marginalità media ${k.margine_medio_pct}%`}
-          danger={k.eta_in_ritardo > 0}
+          delta={`${pratiche_urgenti.length} urgenti`}
+          danger={pratiche_urgenti.length > 0}
           gradient="from-amber-500/10 to-orange-500/5"
         />
       </div>
@@ -181,7 +212,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={FATTURATO_12M} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorFatt" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.5} />
@@ -221,50 +252,32 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Carico per reparto */}
+        {/* Ricavi per tipo */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Carico per reparto</CardTitle>
-            <CardDescription>Pratiche attive e chiuse</CardDescription>
+            <CardTitle className="text-base">Ricavi per tipo</CardTitle>
+            <CardDescription>Distribuzione documenti Ge.FA</CardDescription>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart
-                data={CARICO_PER_REPARTO}
-                layout="vertical"
-                margin={{ top: 5, right: 10, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                <XAxis
-                  type="number"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="reparto"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-                  width={75}
-                />
-                <RTooltip
-                  contentStyle={{
-                    background: "var(--popover)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                />
-                <Legend
-                  wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }}
-                  iconType="circle"
-                />
-                <Bar dataKey="attive" fill="var(--chart-1)" radius={[0, 4, 4, 0]} />
-                <Bar dataKey="chiuse" fill="var(--chart-2)" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <CardContent className="space-y-3">
+            {(stats?.ricavi_per_tipo || []).slice(0, 5).map((r, i) => {
+              const max = Math.max(...(stats?.ricavi_per_tipo || []).map(x => Number(x.totale)));
+              const pct = max > 0 ? (Number(r.totale) / max) * 100 : 0;
+              return (
+                <div key={i}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="font-medium text-gray-700">{r.tipo_fattu || "—"}</span>
+                    <span className="text-gray-500 text-xs">{Number(r.num).toLocaleString("it-IT")} doc.</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2">
+                    <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">{formatEur(r.totale)}</p>
+                </div>
+              );
+            })}
+            {(!stats?.ricavi_per_tipo?.length) && (
+              <p className="text-gray-400 text-sm">Nessun dato disponibile</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -325,7 +338,7 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y">
-            {pratiche_urgenti.map((p) => (
+            {pratiche_urgenti.length > 0 ? pratiche_urgenti.map((p) => (
               <Link
                 key={p.id}
                 href={`/pratiche/${p.id}`}
@@ -343,9 +356,9 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-semibold">{p.numero}</p>
+                    <p className="text-sm font-semibold">#{p.id}</p>
                     <Badge variant="outline" className="text-[10px] h-5">
-                      Step {p.stepCorrente}/12
+                      Step {p.step_corrente}/12
                     </Badge>
                     <Badge
                       variant={p.urgenza === "critica" ? "destructive" : "secondary"}
@@ -358,15 +371,20 @@ export default function DashboardPage() {
                 </div>
                 <div className="hidden md:block text-right">
                   <p className="text-xs text-muted-foreground">
-                    {p.containerCount}× {p.containerType} · {p.compagnia}
+                    {p.n_container}× {p.tipo_container} · {p.compagnia_navigazione}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    ETA {new Date(p.etaItalia).toLocaleDateString("it-IT")}
+                    ETA {p.eta_italia || "—"}
                   </p>
                 </div>
                 <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
               </Link>
-            ))}
+            )) : (
+              <div className="p-8 text-center text-muted-foreground">
+                <p>Nessuna pratica urgente</p>
+                <p className="text-xs mt-1">Le pratiche create appariranno qui</p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

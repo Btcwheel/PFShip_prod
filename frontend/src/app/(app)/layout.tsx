@@ -1,21 +1,26 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import { useAuth } from "@/lib/auth-store";
 import { AppSidebar } from "@/components/shell/app-sidebar";
 import { AppTopbar } from "@/components/shell/app-topbar";
+import { getToken } from "@/lib/api";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated, user } = useAuth();
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated) router.replace("/login");
-  }, [isAuthenticated, router]);
+    const token = getToken();
+    if (!token) {
+      router.replace("/login");
+    } else {
+      setReady(true);
+    }
+  }, [router]);
 
-  if (!user) return null;
+  if (!ready) return null;
 
   return (
     <SidebarProvider defaultOpen>
