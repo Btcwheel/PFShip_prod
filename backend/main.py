@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.database import init_sqlite
-from app.routers import auth, anagrafiche, manifesti, dashboard, tickets, fatture, agenti
+from app.routers import auth, anagrafiche, manifesti, dashboard, tickets, fatture, agenti, tasks, approvazioni
 from app.email_poller import start_poller
 
 
@@ -29,6 +29,8 @@ app.include_router(dashboard.router)
 app.include_router(tickets.router)
 app.include_router(fatture.router)
 app.include_router(agenti.router)
+app.include_router(tasks.router)
+app.include_router(approvazioni.router)
 
 
 @app.get("/")

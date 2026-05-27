@@ -81,8 +81,8 @@ export interface DashboardStats {
     importo: number;
     tipo_fattu: string;
   }[];
-  fatturato_per_anno: {
-    anno_fattu: number;
+  fatturato_mensile: {
+    mese: string;
     num_fatture: number;
     totale: number;
   }[];
@@ -241,15 +241,113 @@ export async function getManifesti(page = 1, limit = 20) {
   return apiFetch(`/manifesti?${params}`);
 }
 
-// ─── Tickets ─────────────────────────────────────────────────────────────────
+// ─── Tasks ───────────────────────────────────────────────────────────────────
 
-export async function getTickets() {
-  return apiFetch("/tickets");
+export interface Task {
+  id: number;
+  titolo: string;
+  descrizione: string;
+  assegnato_a: string;
+  creato_da: string;
+  priorita: string;
+  stato: string;
+  categoria: string;
+  pratica_id: number | null;
+  scadenza: string | null;
+  completato_il: string | null;
+  creato_il: string;
 }
 
-export async function createTicket(titolo: string, descrizione: string, priorita = "normale") {
-  return apiFetch("/tickets", {
+export async function getTasks(params?: {
+  stato?: string;
+  assegnato_a?: string;
+  priorita?: string;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.stato) qs.set("stato", params.stato);
+  if (params?.assegnato_a) qs.set("assegnato_a", params.assegnato_a);
+  if (params?.priorita) qs.set("priorita", params.priorita);
+  const query = qs.toString();
+  return apiFetch<Task[]>(`/tasks${query ? `?${query}` : ""}`);
+}
+
+export async function getMyTasks() {
+  return apiFetch<Task[]>("/tasks/mie");
+}
+
+export async function createTask(data: {
+  titolo: string;
+  descrizione?: string;
+  assegnato_a?: string;
+  priorita?: string;
+  categoria?: string;
+  pratica_id?: number;
+  scadenza?: string;
+}) {
+  return apiFetch<{ id: number }>("/tasks", {
     method: "POST",
-    body: JSON.stringify({ titolo, descrizione, priorita }),
+    body: JSON.stringify(data),
   });
+}
+
+export async function updateTask(
+  id: number,
+  data: {
+    titolo?: string;
+    descrizione?: string;
+    assegnato_a?: string;
+    priorita?: string;
+    stato?: string;
+    categoria?: string;
+    scadenza?: string;
+  }
+) {
+  return apiFetch<Task>(`/tasks/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteTask(id: number) {
+  return apiFetch<{ status: string }>(`/tasks/${id}`, { method: "DELETE" });
+}
+
+// ─── Approvazioni ─────────────────────────────────────────────────────────────
+
+export interface Approvazione {
+  id: number;
+  pratica_id: number;
+  step_numero: number;
+  agente: string;
+  output_ai: string;
+  stato: string;
+  revisore: string | null;
+  note_revisore: string | null;
+  creato_il: string;
+  revisionato_il: string | null;
+  pratica_cliente: string | null;
+  bl_number: string | null;
+}
+
+export async function getApprovazioni(stato?: string) {
+  const qs = stato ? `?stato=${stato}` : "";
+  return apiFetch<Approvazione[]>(`/approvazioni${qs}`);
+}
+
+export async function getApprovazioniConteggio() {
+  return apiFetch<{ pending: number }>("/approvazioni/conteggio");
+}
+
+export async function approvaApprovazione(id: number, note: string = "") {
+  return apiFetch<{ status: string; nuovo_step: number }>(
+    `/approvazioni/${id}/approva`,
+    { method: "POST", body: JSON.stringify({ note }) }
+  );
+}
+
+export async function respingiApprovazione(id: number, note: string = "") {
+  return apiFetch<{ status: string }>(
+    `/approvazioni/${id}/respingi`,
+    { method: "POST", body: JSON.stringify({ note }) }
+  );
 }

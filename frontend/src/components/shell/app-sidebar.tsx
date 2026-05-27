@@ -19,6 +19,8 @@ import {
   LogOut,
   Sun,
   Moon,
+  ListChecks,
+  ClipboardCheck,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -53,6 +55,11 @@ const NAV_OPERATIONS = [
   { label: "Bolle Doganali", href: "/bolle", icon: Stamp },
   { label: "Terminal", href: "/terminal", icon: Anchor },
   { label: "Trasporti", href: "/trasporti", icon: Truck },
+];
+
+const NAV_WORK = [
+  { label: "Task", href: "/tasks", icon: ListChecks },
+  { label: "Approvazioni", href: "/approvazioni", icon: ClipboardCheck, badge: "Da revisionare" },
 ];
 
 const NAV_FINANCE = [
@@ -145,6 +152,36 @@ export function AppSidebar() {
                   >
                     <item.icon />
                     <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Workflow</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {NAV_WORK.map((item) => (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton
+                    render={<Link href={item.href} />}
+                    isActive={isActive(item.href)}
+                    tooltip={item.label}
+                  >
+                    <Link href={item.href}>
+                      <item.icon />
+                      <span>{item.label}</span>
+                      {item.badge && (
+                        <Badge
+                          variant="secondary"
+                          className="ml-auto h-5 px-1.5 text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                        >
+                          {item.badge}
+                        </Badge>
+                      )}
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

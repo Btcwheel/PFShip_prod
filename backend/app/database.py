@@ -54,6 +54,38 @@ async def init_sqlite():
         """))
 
         await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                titolo TEXT NOT NULL,
+                descrizione TEXT,
+                assegnato_a TEXT,
+                creato_da TEXT,
+                priorita TEXT DEFAULT 'normale',
+                stato TEXT DEFAULT 'da_fare',
+                categoria TEXT DEFAULT 'operativo',
+                pratica_id INTEGER,
+                scadenza TEXT,
+                completato_il TIMESTAMP,
+                creato_il TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS approvazioni (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pratica_id INTEGER NOT NULL,
+                step_numero INTEGER NOT NULL,
+                agente TEXT NOT NULL,
+                output_ai TEXT,
+                stato TEXT DEFAULT 'pending',
+                revisore TEXT,
+                note_revisore TEXT,
+                creato_il TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                revisionato_il TIMESTAMP
+            )
+        """))
+
+        await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS pratiche (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente TEXT, paese_origine TEXT, shipper TEXT,

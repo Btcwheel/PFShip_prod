@@ -120,6 +120,23 @@ async def _aggiorna_step(db: AsyncSession, pratica_id: int, step: int, extra: di
         pass
 
 
+async def _crea_approvazione(db: AsyncSession, pratica_id: int, step_numero: int, agente: str, output_ai: str):
+    """Crea un record di approvazione pending per lo step AI completato."""
+    try:
+        await db.execute(text("""
+            INSERT INTO approvazioni (pratica_id, step_numero, agente, output_ai, stato)
+            VALUES (:pratica_id, :step_numero, :agente, :output_ai, 'pending')
+        """), {
+            "pratica_id": pratica_id,
+            "step_numero": step_numero,
+            "agente": agente,
+            "output_ai": output_ai,
+        })
+        await db.commit()
+    except Exception:
+        pass
+
+
 # ─── STEP 1a: Upload EML ────────────────────────────────────────────────────
 
 @router.post("/step1/upload-eml")
@@ -488,7 +505,7 @@ Calcola e rispondi in italiano:
 4. Segnala se c'è ritardo rispetto all'ETA dichiarata
 Sii conciso.""", max_tokens=300)
 
-    await _aggiorna_step(db, body.pratica_id, 3)
+    await _crea_approvazione(db, body.pratica_id, 3, "VesselTracker", analisi)
 
     return {
         "step": 3, "stato": "nave_monitorata",
@@ -544,7 +561,7 @@ Documenti da richiedere:
 Spiega l'urgenza (arrivo nave tra circa 2 settimane).
 Oggetto + corpo email. Firma: Ufficio Import PF Ship Srl""", max_tokens=500)
 
-    await _aggiorna_step(db, body.pratica_id, 4)
+    await _crea_approvazione(db, body.pratica_id, 4, "DocRequest", email_richiesta)
 
     return {
         "step": 4, "stato": "documenti_richiesti",
@@ -598,7 +615,7 @@ Stato: {stato}
 
 {"Genera email di sollecito/correzione in " + body.lingua + " per " + destinatario + " con oggetto e corpo." if stato != "OK" else "Conferma completezza e indica prossimi step operativi (bolla doganale)."}""", max_tokens=600)
 
-    await _aggiorna_step(db, body.pratica_id, 5)
+    await _crea_approvazione(db, body.pratica_id, 5, "DocCheck", azione)
 
     return {
         "step": 5, "stato": stato,
@@ -701,7 +718,7 @@ Estrai dai documenti e restituisci SOLO un JSON con questa struttura:
 }}""", max_tokens=3000)
 
     bolla = parse_json_safe(risposta)
-    await _aggiorna_step(db, body.pratica_id, 6)
+    await _crea_approvazione(db, body.pratica_id, 6, "CustomsFiler", json.dumps(bolla, default=str))
 
     return {
         "step": 6,
@@ -745,7 +762,7 @@ Genera:
 4. Tempi attesi di risposta da {compagnia}
 Professionale e specifico.""", max_tokens=600)
 
-    await _aggiorna_step(db, body.pratica_id, 7)
+    await _crea_approvazione(db, body.pratica_id, 7, "DOAgent", istruzioni)
 
     return {
         "step": 7, "stato": "delivery_order_richiesto",
@@ -785,7 +802,7 @@ Genera checklist per:
 4. Dopo il pagamento: cosa richiedere a {compagnia}
 Conciso e operativo.""", max_tokens=400)
 
-    await _aggiorna_step(db, body.pratica_id, 8)
+    await _crea_approvazione(db, body.pratica_id, 8, "PaymentAgent", istruzioni)
 
     return {
         "step": 8, "stato": "pagamento_gestito",
@@ -849,7 +866,7 @@ Genera:
 3. Email al trasportatore per prenotare il ritiro dal porto
 Tutto in italiano, professionale.""", max_tokens=600)
 
-    await _aggiorna_step(db, body.pratica_id, 9)
+    await _crea_approvazione(db, body.pratica_id, 9, "TransportAgent", email_bozze)
 
     return {
         "step": 9, "stato": "trasportatore_prenotato",
@@ -890,6 +907,7 @@ Genera:
 In italiano, professionale.""", max_tokens=500)
 
     await _aggiorna_step(db, body.pratica_id, 10, extra={"stato": "consegnata"})
+    await _crea_approvazione(db, body.pratica_id, 10, "DeliveryAgent", riepilogo)
 
     return {
         "step": 10, "stato": "consegna_confermata",
@@ -950,7 +968,7 @@ Genera:
 3. Riferimenti da indicare in fattura (B/L, n° pratica, ecc.)
 In italiano.""", max_tokens=600)
 
-    await _aggiorna_step(db, body.pratica_id, 11)
+    await _crea_approvazione(db, body.pratica_id, 11, "InvoiceAgent", istruzioni)
 
     return {
         "step": 11, "stato": "fatturazione_preparata",
@@ -1021,6 +1039,7 @@ Genera istruzioni per:
 In italiano, operativo.""", max_tokens=500)
 
     await _aggiorna_step(db, body.pratica_id, 12, extra={"stato": "chiusa"})
+    await _crea_approvazione(db, body.pratica_id, 12, "AccountingAgent", istruzioni)
 
     return {
         "step": 12, "stato": "pratica_chiusa",

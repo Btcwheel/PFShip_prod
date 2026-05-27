@@ -27,6 +27,8 @@ import {
   CheckCircle2,
   Clock,
   Zap,
+  ListChecks,
+  ClipboardCheck,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -40,7 +42,7 @@ import {
   Bar,
   Legend,
 } from "recharts";
-import { getDashboardStats, getPratiche, getInboxStatus, type DashboardStats } from "@/lib/api";
+import { getDashboardStats, getPratiche, getInboxStatus, getMyTasks, getApprovazioniConteggio, type DashboardStats, type Task } from "@/lib/api";
 import { PRATICHE_MOCK, AGENT_RUNS_MOCK } from "@/lib/mock-data";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -64,6 +66,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [pratiche, setPratiche] = useState<any[]>([]);
   const [inboxStatus, setInboxStatus] = useState<any>(null);
+  const [myTasks, setMyTasks] = useState<Task[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -71,10 +75,14 @@ export default function DashboardPage() {
       getDashboardStats().catch(() => null),
       getPratiche().catch(() => []),
       getInboxStatus().catch(() => null),
-    ]).then(([s, p, i]) => {
+      getMyTasks().catch(() => []),
+      getApprovazioniConteggio().catch(() => ({ pending: 0 })),
+    ]).then(([s, p, i, t, a]) => {
       setStats(s);
       setPratiche(p);
       setInboxStatus(i);
+      setMyTasks(t);
+      setPendingCount(a.pending || 0);
       setLoading(false);
     });
   }, []);
@@ -87,8 +95,8 @@ export default function DashboardPage() {
     ? stats.fatturato_anno / 12
     : 0;
 
-  const chartData = (stats?.fatturato_per_anno || []).map((r) => ({
-    mese: String(r.anno_fattu),
+  const chartData = (stats?.fatturato_mensile || []).map((r) => ({
+    mese: String(r.mese),
     fatturato: r.totale,
     num_fatture: r.num_fatture,
   }));
@@ -182,7 +190,7 @@ export default function DashboardPage() {
           value={formatEur(stats?.fatturato_anno || 0)}
           valueAsString
           icon={Euro}
-          delta={`${stats?.fatturato_per_anno?.[1]?.num_fatture || 0} fatture anno scorso`}
+          delta={`${stats?.fatturato_mensile?.[stats.fatturato_mensile.length - 2]?.num_fatture || 0} fatture mese scorso`}
           deltaPositive
           gradient="from-violet-500/10 to-purple-500/5"
         />
@@ -207,7 +215,7 @@ export default function DashboardPage() {
             </div>
             <Badge variant="secondary">
               <TrendingUp className="h-3 w-3 mr-1" />
-              {stats?.fatturato_per_anno?.[0]?.num_fatture || 0} fatture quest'anno
+              {stats?.fatturato_mensile?.[stats.fatturato_mensile.length - 1]?.num_fatture || 0} fatture questo mese
             </Badge>
           </CardHeader>
           <CardContent>
@@ -309,7 +317,7 @@ export default function DashboardPage() {
               <Activity className="h-4 w-4" />
               AI Activity
             </CardTitle>
-            <CardDescription>{AGENT_RUNS_MOCK.length} run oggi · {formatEur(0.42)}</CardDescription>
+            <CardDescription>{AGENT_RUNS_MOCK.length} run eseguite oggi</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2.5 pb-3">
             {AGENT_RUNS_MOCK.map((run) => (
@@ -322,6 +330,118 @@ export default function DashboardPage() {
               className="inline-flex w-full h-8 items-center justify-center gap-1.5 rounded-lg text-sm font-medium whitespace-nowrap hover:bg-muted hover:text-foreground transition-colors"
             >
               Apri AI Console
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </CardFooter>
+        </Card>
+      </div>
+
+      {/* Pratiche urgenti */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* I miei task */}
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ListChecks className="h-4 w-4" />
+                I miei task
+              </CardTitle>
+              <CardDescription>
+                {myTasks.filter(t => t.stato !== "completato").length} attivi · {myTasks.filter(t => t.stato === "completato").length} completati
+              </CardDescription>
+            </div>
+            {myTasks.filter(t => t.priorita === "urgente" && t.stato !== "completato").length > 0 && (
+              <Badge variant="destructive" className="h-5 text-[10px]">
+                {myTasks.filter(t => t.priorita === "urgente" && t.stato !== "completato").length} urgenti
+              </Badge>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-2 pb-3">
+            {myTasks.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">
+                Nessun task assegnato
+              </p>
+            ) : (
+              myTasks.slice(0, 4).map((t) => (
+                <div key={t.id} className="flex items-start gap-2 text-xs">
+                  <div
+                    className={cn(
+                      "mt-0.5 h-3.5 w-3.5 rounded-full border shrink-0",
+                      t.stato === "completato" ? "bg-emerald-500 border-emerald-500" : "border-muted-foreground/30",
+                      t.priorita === "urgente" && t.stato !== "completato" && "border-red-500"
+                    )}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className={cn("font-medium truncate", t.stato === "completato" && "line-through text-muted-foreground")}>
+                      {t.titolo}
+                    </p>
+                    {t.scadenza && t.stato !== "completato" && (
+                      <p className="text-muted-foreground">
+                        Scadenza {new Date(t.scadenza).toLocaleDateString("it-IT")}
+                      </p>
+                    )}
+                  </div>
+                  <Badge variant="outline" className={cn(
+                    "h-4 text-[9px] shrink-0",
+                    t.priorita === "urgente" && "bg-red-500/10 text-red-600 border-red-500/30"
+                  )}>
+                    {t.priorita}
+                  </Badge>
+                </div>
+              ))
+            )}
+          </CardContent>
+          <CardFooter className="pt-0">
+            <Link
+              href="/tasks"
+              className="inline-flex w-full h-8 items-center justify-center gap-1.5 rounded-lg text-sm font-medium whitespace-nowrap hover:bg-muted hover:text-foreground transition-colors"
+            >
+              Gestisci task
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </CardFooter>
+        </Card>
+
+        {/* Da approvare */}
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ClipboardCheck className="h-4 w-4" />
+                Da approvare
+              </CardTitle>
+              <CardDescription>
+                Output agenti AI in attesa di revisione
+              </CardDescription>
+            </div>
+            {pendingCount > 0 && (
+              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 gap-1 h-5 text-[10px]">
+                <Clock className="h-3 w-3" />
+                {pendingCount}
+              </Badge>
+            )}
+          </CardHeader>
+          <CardContent className="flex items-center justify-center py-6">
+            {pendingCount > 0 ? (
+              <div className="text-center">
+                <p className="text-2xl font-bold text-amber-600">{pendingCount}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {pendingCount === 1 ? "approvazione in attesa" : "approvazioni in attesa"}
+                </p>
+              </div>
+            ) : (
+              <div className="text-center">
+                <CheckCircle2 className="h-8 w-8 mx-auto text-emerald-500 mb-1" />
+                <p className="text-xs text-muted-foreground">Nessuna approvazione in attesa</p>
+              </div>
+            )}
+          </CardContent>
+          <CardFooter className="pt-0">
+            <Link
+              href="/approvazioni"
+              className="inline-flex w-full h-8 items-center justify-center gap-1.5 rounded-lg text-sm font-medium whitespace-nowrap hover:bg-muted hover:text-foreground transition-colors"
+            >
+              {pendingCount > 0 ? "Revisiona output" : "Vedi storico"}
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </CardFooter>

@@ -1,0 +1,28 @@
+From: "Customer SpA" <customer@customer.it>
+To: "PF Ship" <info@pfship.com>
+Subject: Ordine Spedizione PF-2026-0150
+Date: Tue, 27 May 2026 10:30:00 +0200
+Message-ID: <test123@example.com>
+
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Buongiorno PF Ship,
+
+ desidero prenotare la spedizione di 20 container da Shanghai (porto di Shanghai) a Napoli (porto di Napoli).
+
+Dati ordine:
+- N° container: 20
+- Tipo container: 40HC
+- Peso totale: 22.000 kg
+- Descrizione merce: Mobili in legno per ufficio
+- Porto carico: Shanghai
+- Porto scarico: Napoli
+- Nave desiderata: Maersk Neptune
+- ETD richiesto: 15/06/2026
+- ETA Italia: 01/08/2026
+
+Per favore confermi disponibilità e inviarmi i documenti necessari per la prenotazione.
+
+Grazie,
+Customer SpA

@@ -100,8 +100,8 @@ export default function AIConsolePage() {
           <div className="text-xs text-muted-foreground mt-1">Oggi</div>
         </div>
         <div className="text-sm p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20 text-center">
-          <div className="text-2xl font-bold text-emerald-600">€ 4.82</div>
-          <div className="text-xs text-muted-foreground mt-1">Costo AI oggi</div>
+          <div className="text-2xl font-bold text-emerald-600">{AGENT_RUNS_MOCK.filter(r => r.stato === "completed").length}</div>
+          <div className="text-xs text-muted-foreground mt-1">Run completate</div>
         </div>
         <div className="text-sm p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 text-center">
           <div className="text-2xl font-bold text-amber-600">1</div>
