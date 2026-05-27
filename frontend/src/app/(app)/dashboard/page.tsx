@@ -207,7 +207,7 @@ export default function DashboardPage() {
             </div>
             <Badge variant="secondary">
               <TrendingUp className="h-3 w-3 mr-1" />
-              +{k.fatturato_mese_delta_pct}%
+              {stats?.fatturato_per_anno?.[0]?.num_fatture || 0} fatture quest'anno
             </Badge>
           </CardHeader>
           <CardContent>
