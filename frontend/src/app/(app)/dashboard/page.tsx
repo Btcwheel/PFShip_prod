@@ -14,6 +14,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Briefcase,
   Container as ContainersIcon,
   Euro,
@@ -29,6 +36,8 @@ import {
   Zap,
   ListChecks,
   ClipboardCheck,
+  Calendar,
+  Filter,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -62,6 +71,15 @@ function formatEur(n: number) {
   }).format(n);
 }
 
+const MONTHS_FULL = [
+  "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
+];
+const MONTHS_SHORT = [
+  "Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
+  "Lug", "Ago", "Set", "Ott", "Nov", "Dic",
+];
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [pratiche, setPratiche] = useState<any[]>([]);
@@ -69,8 +87,8 @@ export default function DashboardPage() {
   const [myTasks, setMyTasks] = useState<Task[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
+  const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
 
   useEffect(() => {
     Promise.all([
@@ -93,58 +111,60 @@ export default function DashboardPage() {
     .filter((p) => p.urgenza === "critica" || p.urgenza === "alta")
     .slice(0, 5);
 
-  const fatturatoMese = stats?.fatturato_anno
-    ? stats.fatturato_anno / 12
-    : 0;
+  const hasApiData = (stats?.fatturato_mensile || []).length > 0;
 
   const availableYears = Array.from(
     new Set(
-      (stats?.fatturato_mensile || []).length > 0
+      hasApiData
         ? (stats?.fatturato_mensile || []).map((r) =>
             parseInt(String(r.mese).split("-")[0])
           )
         : FATTURATO_12M.map((r) => parseInt(r.mese.split(" ")[1]))
     )
-  ).sort((a, b) => b - a);
+  ).sort((a, b) => b - a).map(String);
 
-  const MONTHS = [
-    "Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
-    "Lug", "Ago", "Set", "Ott", "Nov", "Dic",
-  ];
-
-  const hasApiData = (stats?.fatturato_mensile || []).length > 0;
-
-  const filteredChartData = hasApiData
+  const allChartData = hasApiData
     ? (stats?.fatturato_mensile || [])
-        .filter((r) => parseInt(String(r.mese).split("-")[0]) === selectedYear)
         .map((r) => {
           const [y, m] = String(r.mese).split("-");
           return {
-            mese: MONTHS[parseInt(m) - 1],
+            anno: y,
+            meseIdx: parseInt(m) - 1,
+            mese: MONTHS_SHORT[parseInt(m) - 1],
             fatturato: r.totale,
             num_fatture: r.num_fatture,
           };
         })
-    : FATTURATO_12M.filter((r) => {
-        const [, yearStr] = r.mese.split(" ");
-        const year = parseInt(yearStr);
-        return year === selectedYear;
-      }).map((r) => ({
-        mese: r.mese.split(" ")[0],
-        fatturato: r.fatturato,
-        num_fatture: 0,
-      }));
+    : FATTURATO_12M.map((r) => {
+        const [name, yearStr] = r.mese.split(" ");
+        const idx = MONTHS_SHORT.indexOf(name);
+        return {
+          anno: yearStr,
+          meseIdx: idx,
+          mese: name,
+          fatturato: r.fatturato,
+          num_fatture: 0,
+        };
+      });
 
-  const toggleMonth = (idx: number) => {
-    setSelectedMonths((prev) =>
-      prev.includes(idx) ? prev.filter((m) => m !== idx) : [...prev, idx]
-    );
-  };
+  const filteredChartData = allChartData
+    .filter((d) => d.anno === selectedYear)
+    .filter((d) => selectedMonth === "all" || d.meseIdx === parseInt(selectedMonth))
+    .sort((a, b) => a.meseIdx - b.meseIdx);
 
-  const displayData =
-    selectedMonths.length > 0
-      ? filteredChartData.filter((_, i) => selectedMonths.includes(i))
-      : filteredChartData;
+  const totalPeriodFatturato = filteredChartData.reduce((s, d) => s + d.fatturato, 0);
+  const totalPeriodFatture = filteredChartData.reduce((s, d) => s + d.num_fatture, 0);
+
+  const currentMonthData = allChartData.find(
+    (d) => d.anno === selectedYear && d.meseIdx === new Date().getMonth()
+  );
+  const prevMonthData = allChartData.find(
+    (d) => d.anno === selectedYear && d.meseIdx === new Date().getMonth() - 1
+  );
+  const monthTrend =
+    currentMonthData && prevMonthData && prevMonthData.fatturato > 0
+      ? ((currentMonthData.fatturato - prevMonthData.fatturato) / prevMonthData.fatturato) * 100
+      : 0;
 
   if (loading) {
     return (
@@ -157,11 +177,11 @@ export default function DashboardPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Buongiorno, Francesco</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Ecco la situazione operativa di oggi —{" "}
+            Situazione operativa —{" "}
             {new Date().toLocaleDateString("it-IT", {
               weekday: "long",
               day: "numeric",
@@ -231,12 +251,16 @@ export default function DashboardPage() {
           gradient="from-emerald-500/10 to-teal-500/5"
         />
         <KpiCard
-          title="Fatturato anno"
-          value={formatEur(stats?.fatturato_anno || 0)}
+          title="Fatturato mese"
+          value={formatEur(currentMonthData?.fatturato || 0)}
           valueAsString
           icon={Euro}
-          delta={`${stats?.fatturato_mensile?.[stats.fatturato_mensile.length - 2]?.num_fatture || 0} fatture mese scorso`}
-          deltaPositive
+          delta={
+            monthTrend !== 0
+              ? `${monthTrend > 0 ? "+" : ""}${monthTrend.toFixed(1)}% vs mese scorso`
+              : `${totalPeriodFatture} fatture nel periodo`
+          }
+          deltaPositive={monthTrend >= 0}
           gradient="from-violet-500/10 to-purple-500/5"
         />
         <KpiCard
@@ -258,59 +282,58 @@ export default function DashboardPage() {
               <div>
                 <CardTitle className="text-base">Andamento fatturato</CardTitle>
                 <CardDescription>
-                  {selectedYear} · {displayData.length} {displayData.length === 1 ? "mese" : "mesi"}
+                  {selectedYear} · {filteredChartData.length > 0 ? formatEur(totalPeriodFatturato) : "Nessun dato"}
                 </CardDescription>
               </div>
               <Badge variant="secondary">
                 <TrendingUp className="h-3 w-3 mr-1" />
-                {displayData.reduce((sum, d) => sum + d.num_fatture, 0)} fatture periodo
+                {totalPeriodFatture} fatture periodo
               </Badge>
             </div>
 
-            {/* Year selector */}
-            <div className="flex items-center gap-1.5 mt-3">
-              {availableYears.map((y) => (
-                <button
-                  key={y}
-                  onClick={() => { setSelectedYear(y); setSelectedMonths([]); }}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                    selectedYear === y
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  }`}
+            {/* Period filter bar */}
+            <div className="flex items-center gap-2 mt-4">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <Filter className="h-3.5 w-3.5" />
+                <span className="text-xs font-medium">Periodo:</span>
+              </div>
+              <Select value={selectedYear} onValueChange={(v) => { setSelectedYear(v ?? String(new Date().getFullYear())); setSelectedMonth("all"); }}>
+                <SelectTrigger className="w-[90px] h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableYears.map((y) => (
+                    <SelectItem key={y} value={y}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedMonth} onValueChange={(v) => setSelectedMonth(v ?? "all")}>
+                <SelectTrigger className="w-[140px] h-8 text-xs">
+                  <Calendar className="h-3 w-3 mr-1" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tutto l'anno</SelectItem>
+                  {MONTHS_FULL.map((m, i) => (
+                    <SelectItem key={i} value={String(i)}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(selectedMonth !== "all") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs px-2"
+                  onClick={() => setSelectedMonth("all")}
                 >
-                  {y}
-                </button>
-              ))}
-            </div>
-
-            {/* Month selector */}
-            <div className="flex items-center gap-1 mt-2 flex-wrap">
-              {MONTHS.map((m, i) => {
-                const hasData = filteredChartData[i] && filteredChartData[i].fatturato > 0;
-                const isSelected = selectedMonths.length === 0 || selectedMonths.includes(i);
-                return (
-                  <button
-                    key={i}
-                    onClick={() => toggleMonth(i)}
-                    className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                      !hasData
-                        ? "text-muted-foreground/30 cursor-default"
-                        : isSelected
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground/40"
-                    }`}
-                    disabled={!hasData}
-                  >
-                    {m}
-                  </button>
-                );
-              })}
+                  Reset
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <AreaChart data={filteredChartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorFatt" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.5} />
@@ -363,18 +386,18 @@ export default function DashboardPage() {
               return (
                 <div key={i}>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="font-medium text-gray-700">{r.tipo_fattu || "—"}</span>
-                    <span className="text-gray-500 text-xs">{Number(r.num).toLocaleString("it-IT")} doc.</span>
+                    <span className="font-medium">{r.tipo_fattu || "—"}</span>
+                    <span className="text-muted-foreground text-xs">{Number(r.num).toLocaleString("it-IT")} doc.</span>
                   </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2">
-                    <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
+                  <div className="w-full bg-muted rounded-full h-2">
+                    <div className="bg-blue-500 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">{formatEur(r.totale)}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{formatEur(r.totale)}</p>
                 </div>
               );
             })}
             {(!stats?.ricavi_per_tipo?.length) && (
-              <p className="text-gray-400 text-sm">Nessun dato disponibile</p>
+              <p className="text-muted-foreground text-sm">Nessun dato disponibile</p>
             )}
           </CardContent>
         </Card>
@@ -426,7 +449,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Pratiche urgenti */}
+      {/* Tasks + Approvazioni */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* I miei task */}
         <Card>
@@ -655,6 +678,7 @@ function KpiCard({
               )}
             >
               {deltaPositive && <TrendingUp className="h-3 w-3" />}
+              {!deltaPositive && !danger && <TrendingDown className="h-3 w-3" />}
               {delta}
             </div>
           )}
