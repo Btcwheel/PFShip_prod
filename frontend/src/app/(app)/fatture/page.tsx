@@ -1,17 +1,24 @@
 "use client";
 
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Card, CardContent, CardHeader, CardTitle,
+  Card, CardContent, CardHeader, CardTitle, CardDescription,
 } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Receipt, Euro, Download, Plus, Sparkles, TrendingUp,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
+} from "recharts";
+import {
+  Receipt, Euro, Download, Plus, Sparkles, TrendingUp, Calendar,
 } from "lucide-react";
-import { FATTURE_MOCK } from "@/lib/mock-data";
+import { FATTURE_MOCK, FATTURATO_12M } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 function formatEur(n: number) { return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(n); }
@@ -32,8 +39,50 @@ const STATO_COLOR: Record<string, string> = {
   scaduta: "bg-destructive/10 text-destructive border-destructive/20",
 };
 
+const ANNI = ["2026", "2025", "2024"];
+const MESI = [
+  { value: "", label: "Tutti i mesi" },
+  { value: "01", label: "Gennaio" },
+  { value: "02", label: "Febbraio" },
+  { value: "03", label: "Marzo" },
+  { value: "04", label: "Aprile" },
+  { value: "05", label: "Maggio" },
+  { value: "06", label: "Giugno" },
+  { value: "07", label: "Luglio" },
+  { value: "08", label: "Agosto" },
+  { value: "09", label: "Settembre" },
+  { value: "10", label: "Ottobre" },
+  { value: "11", label: "Novembre" },
+  { value: "12", label: "Dicembre" },
+];
+
 export default function FatturePage() {
-  const totaleOpen = FATTURE_MOCK.filter(f => f.stato !== "pagata").reduce((a, f) => a + f.totale, 0);
+  const [anno, setAnno] = useState("2026");
+  const [mese, setMese] = useState("");
+  const [filtroStato, setFiltroStato] = useState("");
+
+  const filtered = FATTURE_MOCK.filter((f) => {
+    const d = new Date(f.data);
+    const fAnno = d.getFullYear().toString();
+    const fMese = String(d.getMonth() + 1).padStart(2, "0");
+    if (fAnno !== anno) return false;
+    if (mese && fMese !== mese) return false;
+    if (filtroStato && f.stato !== filtroStato) return false;
+    return true;
+  });
+
+  const totaleEmesso = filtered.filter(f => f.stato !== "bozza").reduce((a, f) => a + f.totale, 0);
+  const totaleIncassato = filtered.filter(f => f.stato === "pagata").reduce((a, f) => a + f.totale, 0);
+  const totaleDaIncassare = filtered.filter(f => f.stato !== "pagata" && f.stato !== "bozza").reduce((a, f) => a + f.totale, 0);
+
+  const chartData = FATTURATO_12M.filter((r) => {
+    const [, yearStr] = r.mese.split(" ");
+    return yearStr === anno;
+  }).map((r) => ({
+    mese: r.mese.split(" ")[0],
+    fatturato: r.fatturato,
+    marginalita: r.marginalita,
+  }));
 
   return (
     <div className="p-6 space-y-6">
@@ -48,14 +97,76 @@ export default function FatturePage() {
         </div>
       </div>
 
+      {/* Filtri anno/mese */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            Storico fatturato
+          </CardTitle>
+          <CardDescription>Andamento mensile con marginalità %</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-3 mb-4">
+            <div className="w-40">
+              <Select value={anno} onValueChange={(v) => setAnno(v ?? "2026")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ANNI.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-48">
+              <Select value={mese} onValueChange={(v) => setMese(v ?? "")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {MESI.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorFatt" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.5} />
+                  <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="mese" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+              <RTooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "12px" }} />
+              <Area type="monotone" dataKey="fatturato" stroke="var(--chart-1)" strokeWidth={2.5} fill="url(#colorFatt)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      {/* Stats periodo selezionato */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <QuickStat label="Da emettere" value={FATTURE_MOCK.filter(f => f.stato === "bozza").length} />
-        <QuickStat label="Emesse" value={FATTURE_MOCK.filter(f => f.stato === "emessa" || f.stato === "inviata").length} />
-        <QuickStat label="Totale da incassare" value={formatEur(totaleOpen)} />
-        <QuickStat label="Fatturato mese" value={formatEur(184350)} />
+        <QuickStat label="Fatture periodo" value={filtered.length} />
+        <QuickStat label="Totale emesso" value={formatEur(totaleEmesso)} />
+        <QuickStat label="Totale incassato" value={formatEur(totaleIncassato)} />
+        <QuickStat label="Da incassare" value={formatEur(totaleDaIncassare)} />
       </div>
 
+      {/* Tabella fatture */}
       <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-base">Elenco fatture</CardTitle>
+            <div className="flex gap-2">
+              <Select value={filtroStato} onValueChange={(v) => setFiltroStato(v ?? "")}>
+                <SelectTrigger className="w-36 h-8"><SelectValue placeholder="Stato" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Tutti gli stati</SelectItem>
+                  {Object.entries(STATO_LABEL).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -73,24 +184,28 @@ export default function FatturePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {FATTURE_MOCK.map((f) => (
-                <TableRow key={f.id}>
-                  <TableCell className="font-mono text-xs font-medium">{f.numero}</TableCell>
-                  <TableCell className="text-sm">{f.cliente}</TableCell>
-                  <TableCell className="text-xs">{f.praticaNumero}</TableCell>
-                  <TableCell className="text-xs">{new Date(f.data).toLocaleDateString("it-IT")}</TableCell>
-                  <TableCell className="text-xs">{new Date(f.scadenza).toLocaleDateString("it-IT")}</TableCell>
-                  <TableCell className="text-right font-mono text-xs">{formatEur(f.imponibile)}</TableCell>
-                  <TableCell className="text-right font-mono text-xs">{formatEur(f.iva)}</TableCell>
-                  <TableCell className="text-right font-mono text-sm font-semibold">{formatEur(f.totale)}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={cn("text-[10px]", STATO_COLOR[f.stato])}>{STATO_LABEL[f.stato]}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="text-[10px] gap-1"><Sparkles className="h-3 w-3" /> AI</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {filtered.length === 0 ? (
+                <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Nessuna fattura trovata per il periodo selezionato</TableCell></TableRow>
+              ) : (
+                filtered.map((f) => (
+                  <TableRow key={f.id}>
+                    <TableCell className="font-mono text-xs font-medium">{f.numero}</TableCell>
+                    <TableCell className="text-sm">{f.cliente}</TableCell>
+                    <TableCell className="text-xs">{f.praticaNumero}</TableCell>
+                    <TableCell className="text-xs">{new Date(f.data).toLocaleDateString("it-IT")}</TableCell>
+                    <TableCell className="text-xs">{new Date(f.scadenza).toLocaleDateString("it-IT")}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{formatEur(f.imponibile)}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{formatEur(f.iva)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm font-semibold">{formatEur(f.totale)}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={cn("text-[10px]", STATO_COLOR[f.stato])}>{STATO_LABEL[f.stato]}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-[10px] gap-1"><Sparkles className="h-3 w-3" /> AI</Badge>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>

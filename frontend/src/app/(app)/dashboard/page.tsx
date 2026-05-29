@@ -43,7 +43,7 @@ import {
   Legend,
 } from "recharts";
 import { getDashboardStats, getPratiche, getInboxStatus, getMyTasks, getApprovazioniConteggio, type DashboardStats, type Task } from "@/lib/api";
-import { PRATICHE_MOCK, AGENT_RUNS_MOCK } from "@/lib/mock-data";
+import { PRATICHE_MOCK, AGENT_RUNS_MOCK, FATTURATO_12M } from "@/lib/mock-data";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
@@ -69,6 +69,8 @@ export default function DashboardPage() {
   const [myTasks, setMyTasks] = useState<Task[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
 
   useEffect(() => {
     Promise.all([
@@ -95,11 +97,54 @@ export default function DashboardPage() {
     ? stats.fatturato_anno / 12
     : 0;
 
-  const chartData = (stats?.fatturato_mensile || []).map((r) => ({
-    mese: String(r.mese),
-    fatturato: r.totale,
-    num_fatture: r.num_fatture,
-  }));
+  const availableYears = Array.from(
+    new Set(
+      (stats?.fatturato_mensile || []).length > 0
+        ? (stats?.fatturato_mensile || []).map((r) =>
+            parseInt(String(r.mese).split("-")[0])
+          )
+        : FATTURATO_12M.map((r) => parseInt(r.mese.split(" ")[1]))
+    )
+  ).sort((a, b) => b - a);
+
+  const MONTHS = [
+    "Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
+    "Lug", "Ago", "Set", "Ott", "Nov", "Dic",
+  ];
+
+  const hasApiData = (stats?.fatturato_mensile || []).length > 0;
+
+  const filteredChartData = hasApiData
+    ? (stats?.fatturato_mensile || [])
+        .filter((r) => parseInt(String(r.mese).split("-")[0]) === selectedYear)
+        .map((r) => {
+          const [y, m] = String(r.mese).split("-");
+          return {
+            mese: MONTHS[parseInt(m) - 1],
+            fatturato: r.totale,
+            num_fatture: r.num_fatture,
+          };
+        })
+    : FATTURATO_12M.filter((r) => {
+        const [, yearStr] = r.mese.split(" ");
+        const year = parseInt(yearStr);
+        return year === selectedYear;
+      }).map((r) => ({
+        mese: r.mese.split(" ")[0],
+        fatturato: r.fatturato,
+        num_fatture: 0,
+      }));
+
+  const toggleMonth = (idx: number) => {
+    setSelectedMonths((prev) =>
+      prev.includes(idx) ? prev.filter((m) => m !== idx) : [...prev, idx]
+    );
+  };
+
+  const displayData =
+    selectedMonths.length > 0
+      ? filteredChartData.filter((_, i) => selectedMonths.includes(i))
+      : filteredChartData;
 
   if (loading) {
     return (
@@ -208,19 +253,64 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Fatturato chart */}
         <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
-            <div>
-              <CardTitle className="text-base">Andamento fatturato</CardTitle>
-              <CardDescription>Ultimi 12 mesi · marginalità %</CardDescription>
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <CardTitle className="text-base">Andamento fatturato</CardTitle>
+                <CardDescription>
+                  {selectedYear} · {displayData.length} {displayData.length === 1 ? "mese" : "mesi"}
+                </CardDescription>
+              </div>
+              <Badge variant="secondary">
+                <TrendingUp className="h-3 w-3 mr-1" />
+                {displayData.reduce((sum, d) => sum + d.num_fatture, 0)} fatture periodo
+              </Badge>
             </div>
-            <Badge variant="secondary">
-              <TrendingUp className="h-3 w-3 mr-1" />
-              {stats?.fatturato_mensile?.[stats.fatturato_mensile.length - 1]?.num_fatture || 0} fatture questo mese
-            </Badge>
+
+            {/* Year selector */}
+            <div className="flex items-center gap-1.5 mt-3">
+              {availableYears.map((y) => (
+                <button
+                  key={y}
+                  onClick={() => { setSelectedYear(y); setSelectedMonths([]); }}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    selectedYear === y
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
+
+            {/* Month selector */}
+            <div className="flex items-center gap-1 mt-2 flex-wrap">
+              {MONTHS.map((m, i) => {
+                const hasData = filteredChartData[i] && filteredChartData[i].fatturato > 0;
+                const isSelected = selectedMonths.length === 0 || selectedMonths.includes(i);
+                return (
+                  <button
+                    key={i}
+                    onClick={() => toggleMonth(i)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                      !hasData
+                        ? "text-muted-foreground/30 cursor-default"
+                        : isSelected
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground/40"
+                    }`}
+                    disabled={!hasData}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <AreaChart data={displayData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorFatt" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.5} />

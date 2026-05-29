@@ -170,18 +170,16 @@ export function AppSidebar() {
                     isActive={isActive(item.href)}
                     tooltip={item.label}
                   >
-                    <Link href={item.href}>
-                      <item.icon />
-                      <span>{item.label}</span>
-                      {item.badge && (
-                        <Badge
-                          variant="secondary"
-                          className="ml-auto h-5 px-1.5 text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
-                        >
-                          {item.badge}
-                        </Badge>
-                      )}
-                    </Link>
+                    <item.icon />
+                    <span>{item.label}</span>
+                    {item.badge && (
+                      <Badge
+                        variant="secondary"
+                        className="ml-auto h-5 px-1.5 text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                      >
+                        {item.badge}
+                      </Badge>
+                    )}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -200,19 +198,17 @@ export function AppSidebar() {
                     isActive={isActive(item.href)}
                     tooltip={item.label}
                   >
-                    <Link href={item.href}>
-                      <item.icon />
-                      <span>{item.label}</span>
-                      {item.badge && (
-                        <Badge
-                          variant="secondary"
-                          className="ml-auto h-5 px-1.5 text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
-                        >
-                          <span className="mr-1 h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          {item.badge}
-                        </Badge>
-                      )}
-                    </Link>
+                    <item.icon />
+                    <span>{item.label}</span>
+                    {item.badge && (
+                      <Badge
+                        variant="secondary"
+                        className="ml-auto h-5 px-1.5 text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                      >
+                        <span className="mr-1 h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        {item.badge}
+                      </Badge>
+                    )}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -246,7 +242,7 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger>
-                <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent">
+                <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent" render={<div />}>
                   <Avatar className="h-8 w-8 rounded-lg">
                     <AvatarFallback className="rounded-lg bg-primary/15 text-primary text-xs font-semibold">
                       {initials}
