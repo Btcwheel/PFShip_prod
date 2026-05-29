@@ -92,8 +92,22 @@ export default function FatturePage() {
           <p className="text-sm text-muted-foreground mt-1">Emissione fatture con AI · integrazione Ge.FA</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm"><Download className="h-4 w-4" /> Esporta</Button>
-          <Button size="sm"><Plus className="h-4 w-4" /> Nuova fattura</Button>
+          <Button variant="outline" size="sm" onClick={() => {
+            const csv = [
+              ["Fattura", "Cliente", "Pratica", "Data", "Scadenza", "Imponibile", "IVA", "Totale", "Stato"].join(","),
+              ...filtered.map(f =>
+                [f.numero, f.cliente, f.praticaNumero || "", f.data, f.scadenza, f.imponibile, f.iva, f.totale, f.stato].join(",")
+              ),
+            ].join("\n");
+            const blob = new Blob([csv], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `fatture_export_${anno}${mese ? "_" + mese : ""}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }}><Download className="h-4 w-4" /> Esporta</Button>
+          <Button size="sm" onClick={() => alert("Creazione nuova fattura — da implementare con form")}><Plus className="h-4 w-4" /> Nuova fattura</Button>
         </div>
       </div>
 

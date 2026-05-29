@@ -42,6 +42,7 @@ import {
   ArrowUpDown,
   Eye,
   Sparkles,
+  FileText,
 } from "lucide-react";
 import { PRATICHE_MOCK } from "@/lib/mock-data";
 import type { PraticaStato, PraticaUrgenza } from "@/lib/types";
@@ -85,6 +86,7 @@ const URGENZA_VARIANT: Record<PraticaUrgenza, string> = {
 export default function PratichePage() {
   const [search, setSearch] = useState("");
   const [statoFilter, setStatoFilter] = useState<string | null>("all");
+  const [sortAsc, setSortAsc] = useState(true);
 
   const filtered = PRATICHE_MOCK.filter((p) => {
     const matchSearch =
@@ -94,7 +96,35 @@ export default function PratichePage() {
       p.nave.toLowerCase().includes(search.toLowerCase());
     const matchStato = statoFilter === "all" || p.stato === statoFilter;
     return matchSearch && matchStato;
+  }).sort((a, b) => {
+    const dA = new Date(a.etaItalia).getTime();
+    const dB = new Date(b.etaItalia).getTime();
+    return sortAsc ? dA - dB : dB - dA;
   });
+
+  const handleExport = () => {
+    const csv = [
+      ["Numero", "Cliente", "Nave", "Viaggio", "Container", "Stato", "Step", "ETA", "Operatore"].join(","),
+      ...filtered.map(p =>
+        [p.numero, p.cliente, p.nave, p.viaggio, `${p.containerCount}x ${p.containerType}`, p.stato, `${p.stepCorrente}/12`, p.etaItalia, p.operatore].join(",")
+      ),
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pratiche_export_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportPDF = (id: string) => {
+    alert(`Esportazione PDF per pratica ${id} — da implementare con generazione PDF lato server`);
+  };
+
+  const handleRunAI = (id: string) => {
+    alert(`Esecuzione AI agent per pratica ${id} — chiamerà POST /api/agenti/step${id}/...`);
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -106,11 +136,11 @@ export default function PratichePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4" />
             Esporta
           </Button>
-          <Button size="sm">
+          <Button size="sm" onClick={() => alert("Creazione nuova pratica — da implementare con form/dialog")}>
             <Plus className="h-4 w-4" />
             Nuova pratica
           </Button>
@@ -152,7 +182,7 @@ export default function PratichePage() {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon" className="h-9 w-9">
+            <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setSortAsc(!sortAsc)}>
               <ArrowUpDown className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -235,12 +265,12 @@ export default function PratichePage() {
                           <Eye className="h-3.5 w-3.5" />
                           Apri dettaglio
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleRunAI(p.id)}>
                           <Sparkles className="h-3.5 w-3.5" />
                           Esegui AI agent
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Download className="h-3.5 w-3.5" />
+                        <DropdownMenuItem onClick={() => handleExportPDF(p.id)}>
+                          <FileText className="h-3.5 w-3.5" />
                           Esporta PDF
                         </DropdownMenuItem>
                       </DropdownMenuContent>

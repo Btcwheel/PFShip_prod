@@ -92,7 +92,21 @@ export default function ContabilitaPage() {
           <h1 className="text-2xl font-bold">Contabilità</h1>
           <p className="text-sm text-muted-foreground mt-1">Partita doppia · integrazione Ge.CO · scadenzario</p>
         </div>
-        <Button variant="outline" size="sm"><Download className="h-4 w-4" /> Esporta</Button>
+        <Button variant="outline" size="sm" onClick={() => {
+          const csv = [
+            ["Data", "Descrizione", "Dare", "Avere", "Stato"].join(","),
+            ...filtered.map(m =>
+              [m.data, `"${m.descrizione}"`, m.dare, m.avere, m.stato].join(",")
+            ),
+          ].join("\n");
+          const blob = new Blob([csv], { type: "text/csv" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `contabilita_export_${anno}${mese ? "_" + mese : ""}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }}><Download className="h-4 w-4" /> Esporta</Button>
       </div>
 
       {/* Storico annuale/mensile */}

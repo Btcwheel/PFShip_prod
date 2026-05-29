@@ -41,8 +41,8 @@ export default function TrasportiPage() {
           <p className="text-sm text-muted-foreground mt-1">Spedizione terrestre · calendario vettori · conferma cliente</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm"><CalendarDays className="h-4 w-4" /> Calendario</Button>
-          <Button size="sm"><Truck className="h-4 w-4" /> Nuovo trasporto</Button>
+          <Button variant="outline" size="sm" onClick={() => alert("Calendario interattivo — da implementare con vista calendario")}><CalendarDays className="h-4 w-4" /> Calendario</Button>
+          <Button size="sm" onClick={() => alert("Creazione nuovo trasporto — da implementare con form")}><Truck className="h-4 w-4" /> Nuovo trasporto</Button>
         </div>
       </div>
 
@@ -107,7 +107,7 @@ export default function TrasportiPage() {
           <div className="text-center text-muted-foreground">
             <CalendarDays className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p className="text-sm">Calendario interattivo con slot vettori e conferme cliente</p>
-            <Button variant="outline" size="sm" className="mt-2">
+            <Button variant="outline" size="sm" className="mt-2" onClick={() => alert("Notifica cliente per conferma trasporto — invierà email/SMS")}>
               <Send className="h-4 w-4" /> Notifica cliente per conferma
             </Button>
           </div>

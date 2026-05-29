@@ -48,7 +48,7 @@ export default function BollePage() {
           <h1 className="text-2xl font-bold">Bolle Doganali</h1>
           <p className="text-sm text-muted-foreground mt-1">Precompilazione AI · workflow approvazione · invio PRADO</p>
         </div>
-        <Button size="sm"><Stamp className="h-4 w-4" /> Nuova bolla</Button>
+        <Button size="sm" onClick={() => alert("Creazione nuova bolla doganale — da implementare con form/dialog")}><Stamp className="h-4 w-4" /> Nuova bolla</Button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

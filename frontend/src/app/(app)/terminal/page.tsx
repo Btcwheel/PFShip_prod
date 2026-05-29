@@ -40,7 +40,7 @@ export default function TerminalPage() {
           <h1 className="text-2xl font-bold">Terminal</h1>
           <p className="text-sm text-muted-foreground mt-1">Monitoraggio container ai terminal · movimenti · costi sosta</p>
         </div>
-        <Button size="sm" variant="outline">
+        <Button size="sm" variant="outline" onClick={() => alert("Trasferimento container — da implementare con selezione terminal e container")}>
           <MapPin className="h-4 w-4" /> Trasferisci container
         </Button>
       </div>
@@ -58,7 +58,7 @@ export default function TerminalPage() {
           <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
           <div className="text-sm">
             <strong>2 container</strong> in sosta da 8 giorni a CT Napoli (110€/g). Costo cumulato: 2.640€. Suggerito trasferimento a Conateco (75€/g).
-            <Button variant="link" size="sm" className="h-auto p-0 ml-2">Avvia trasferimento</Button>
+            <Button variant="link" size="sm" className="h-auto p-0 ml-2" onClick={() => alert("Avvio trasferimento container a Conateco")}>Avvia trasferimento</Button>
           </div>
         </CardContent>
       </Card>

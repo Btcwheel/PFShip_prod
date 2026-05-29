@@ -39,7 +39,7 @@ export default function UtentiPage() {
           <h1 className="text-2xl font-bold">Utenti & Team</h1>
           <p className="text-sm text-muted-foreground mt-1">{UTENTI.length} utenti · 5 team</p>
         </div>
-        <Button size="sm"><Plus className="h-4 w-4" /> Nuovo utente</Button>
+        <Button size="sm" onClick={() => alert("Creazione nuovo utente — da implementare con form/dialog")}><Plus className="h-4 w-4" /> Nuovo utente</Button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">

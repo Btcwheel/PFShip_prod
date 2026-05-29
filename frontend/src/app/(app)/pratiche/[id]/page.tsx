@@ -106,11 +106,11 @@ export default function PraticaDettaglioPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => alert(`Esecuzione step ${pratica.stepCorrente} per pratica ${pratica.numero} — chiamerà API backend`) }>
             <Sparkles className="h-4 w-4" />
             Esegui prossimo step
           </Button>
-          <Button size="sm">
+          <Button size="sm" onClick={() => alert(`Download riepilogo pratica ${pratica.numero} — genererà PDF`) }>
             <Download className="h-4 w-4" />
             Scarica riepilogo
           </Button>
@@ -210,7 +210,7 @@ export default function PraticaDettaglioPage() {
                       {(d.size / 1024).toFixed(0)} KB · caricato da {d.uploadedBy}
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon"><Download className="h-4 w-4" /></Button>
+                  <Button variant="ghost" size="icon" onClick={() => alert(`Download documento ${d.nome}`)}><Download className="h-4 w-4" /></Button>
                 </div>
               ))}
             </CardContent>
@@ -263,7 +263,7 @@ export default function PraticaDettaglioPage() {
                 L&apos;AI ha completato gli step 1-{stepPos + 1}. Il prossimo agente da eseguire è{" "}
                 <strong className="text-foreground">{STEPS[stepPos + 1]?.label || "—"}</strong>.
               </p>
-              <Button>
+              <Button onClick={() => alert(`Esecuzione agente ${STEPS[stepPos + 1]?.agent} per pratica ${pratica.numero}`)}>
                 <Sparkles className="h-4 w-4" />
                 Esegui {STEPS[stepPos + 1]?.agent || "prossimo agente"}
               </Button>

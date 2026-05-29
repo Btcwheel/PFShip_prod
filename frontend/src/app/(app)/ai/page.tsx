@@ -84,7 +84,7 @@ export default function AIConsolePage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm"><RefreshCw className="h-4 w-4" /> Aggiorna</Button>
+          <Button variant="outline" size="sm" onClick={() => window.location.reload()}><RefreshCw className="h-4 w-4" /> Aggiorna</Button>
           <Button size="sm" className="gap-1.5">
             <Brain className="h-4 w-4" />
             Orchestratore attivo
