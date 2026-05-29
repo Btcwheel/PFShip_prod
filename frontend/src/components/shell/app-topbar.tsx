@@ -104,7 +104,7 @@ export function AppTopbar() {
         </Button>
 
         <Tooltip>
-          <TooltipTrigger render={<div />}>
+          <TooltipTrigger render={
             <Button
               variant="ghost"
               size="icon"
@@ -113,17 +113,17 @@ export function AppTopbar() {
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
-          </TooltipTrigger>
+          } />
           <TooltipContent>{theme === "dark" ? "Tema chiaro" : "Tema scuro"}</TooltipContent>
         </Tooltip>
 
         <Popover>
-          <PopoverTrigger render={<div />}>
+          <PopoverTrigger render={
             <Button variant="ghost" size="icon" className="relative h-8 w-8">
               <Bell className="h-4 w-4" />
               <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-background" />
             </Button>
-          </PopoverTrigger>
+          } />
           <PopoverContent align="end" className="w-80 p-0">
             <div className="px-3 py-2 border-b flex items-center justify-between">
               <div className="text-sm font-medium">Notifiche</div>
