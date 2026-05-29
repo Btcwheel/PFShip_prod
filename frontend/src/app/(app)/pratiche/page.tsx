@@ -47,6 +47,7 @@ import {
 import { PRATICHE_MOCK } from "@/lib/mock-data";
 import type { PraticaStato, PraticaUrgenza } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { NuovaPraticaDialog } from "@/components/pratiche/nuova-pratica-dialog";
 
 const STATO_LABEL: Record<PraticaStato, string> = {
   bozza: "Bozza",
@@ -140,10 +141,7 @@ export default function PratichePage() {
             <Download className="h-4 w-4" />
             Esporta
           </Button>
-          <Button size="sm" onClick={() => alert("Creazione nuova pratica — da implementare con form/dialog")}>
-            <Plus className="h-4 w-4" />
-            Nuova pratica
-          </Button>
+          <NuovaPraticaDialog />
         </div>
       </div>
 
