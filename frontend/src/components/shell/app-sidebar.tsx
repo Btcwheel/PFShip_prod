@@ -21,8 +21,12 @@ import {
   Moon,
   ListChecks,
   ClipboardCheck,
+  Briefcase,
+  CheckCircle2,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useAuth } from "@/lib/auth-store";
+import { cn } from "@/lib/utils";
 import {
   Sidebar,
   SidebarContent,
@@ -82,6 +86,7 @@ export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
+  const { user, switchRole } = useAuth();
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
@@ -97,11 +102,13 @@ export function AppSidebar() {
       const payload = JSON.parse(atob(token.split(".")[1]));
       return payload;
     } catch {
-      return { sub: "User", email: "", cognome: "" };
+      return { sub: "User", email: "", cognose: "" };
     }
   })();
 
-  const initials = userSub.sub
+  const initials = user?.name
+    ? user.name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase()
+    : userSub.sub
     ? userSub.sub.substring(0, 2).toUpperCase()
     : "U";
 
@@ -249,10 +256,17 @@ export function AppSidebar() {
                     </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium">{userSub.sub}</span>
+                    <span className="truncate font-medium">{user?.name || userSub.sub}</span>
                     <span className="truncate text-xs text-muted-foreground">
-                      {userSub.email || "pfship.agent@quixel.it"}
+                      {user?.email || userSub.email || "pfship.agent@quixel.it"}
                     </span>
+                    <Badge variant="outline" className={cn(
+                      "h-4 text-[9px] mt-0.5 w-fit",
+                      user?.role === "manager" && "text-amber-600 border-amber-500/30",
+                      user?.role === "operator" && "text-blue-600 border-blue-500/30",
+                    )}>
+                      {user?.role === "manager" ? "Manager" : user?.role === "operator" ? "Operatore" : "Admin"}
+                    </Badge>
                   </div>
                   <ChevronUp className="ml-auto h-4 w-4" />
                 </SidebarMenuButton>
@@ -262,6 +276,31 @@ export function AppSidebar() {
                 align="end"
                 className="min-w-56 rounded-lg"
               >
+                <div className="px-2 py-1.5">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium px-2 mb-1">Cambia ruolo (demo)</p>
+                  {(["admin", "manager", "operator"] as const).map((r) => {
+                    const labels = { admin: "Admin", manager: "Manager", operator: "Operatore" };
+                    const icons = { admin: ShieldCheck, manager: Users, operator: Briefcase };
+                    const colors = { admin: "text-primary", manager: "text-amber-600", operator: "text-blue-600" };
+                    const Icon = icons[r];
+                    const isActive = user?.role === r;
+                    return (
+                      <button
+                        key={r}
+                        onClick={() => switchRole(r)}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                          isActive ? "bg-muted font-medium" : "hover:bg-muted/50"
+                        )}
+                      >
+                        <Icon className={cn("h-3.5 w-3.5", colors[r])} />
+                        <span>{labels[r]}</span>
+                        {isActive && <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-emerald-500" />}
+                      </button>
+                    );
+                  })}
+                </div>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                 >
