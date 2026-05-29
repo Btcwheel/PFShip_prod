@@ -100,7 +100,7 @@ export function NuovaPraticaDialog() {
           Nuova pratica
         </Button>
       } />
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Nuova pratica import</DialogTitle>
           <DialogDescription>
@@ -130,26 +130,26 @@ export function NuovaPraticaDialog() {
 
         {/* Step 0: Cliente */}
         {step === 0 && (
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-5 py-3">
+            <div className="grid grid-cols-2 gap-5">
               <div className="space-y-2">
                 <Label>Cliente *</Label>
-                <Input value={form.cliente} onChange={(e) => update("cliente", e.target.value)} placeholder="Es. Galileo Import Export" />
+                <Input value={form.cliente} onChange={(e) => update("cliente", e.target.value)} placeholder="Es. Galileo Import Export" className="h-10" />
               </div>
               <div className="space-y-2">
                 <Label>Shipper *</Label>
-                <Input value={form.shipper} onChange={(e) => update("shipper", e.target.value)} placeholder="Es. Shanghai Trading Co." />
+                <Input value={form.shipper} onChange={(e) => update("shipper", e.target.value)} placeholder="Es. Shanghai Trading Co." className="h-10" />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-5">
               <div className="space-y-2">
                 <Label>Paese origine</Label>
-                <Input value={form.paeseOrigine} onChange={(e) => update("paeseOrigine", e.target.value)} placeholder="Cina" />
+                <Input value={form.paeseOrigine} onChange={(e) => update("paeseOrigine", e.target.value)} placeholder="Cina" className="h-10" />
               </div>
               <div className="space-y-2">
                 <Label>Porto carico *</Label>
                 <Select value={form.portoCarico} onValueChange={(v) => update("portoCarico", v ?? "")}>
-                  <SelectTrigger><SelectValue placeholder="Seleziona" /></SelectTrigger>
+                  <SelectTrigger className="h-10"><SelectValue placeholder="Seleziona" /></SelectTrigger>
                   <SelectContent>
                     {PORTI.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                   </SelectContent>
@@ -158,7 +158,7 @@ export function NuovaPraticaDialog() {
               <div className="space-y-2">
                 <Label>Porto scarico *</Label>
                 <Select value={form.portoScarico} onValueChange={(v) => update("portoScarico", v ?? "")}>
-                  <SelectTrigger><SelectValue placeholder="Seleziona" /></SelectTrigger>
+                  <SelectTrigger className="h-10"><SelectValue placeholder="Seleziona" /></SelectTrigger>
                   <SelectContent>
                     {PORTI_SCARICO.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                   </SelectContent>
@@ -170,22 +170,22 @@ export function NuovaPraticaDialog() {
 
         {/* Step 1: Spedizione */}
         {step === 1 && (
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-5 py-3">
+            <div className="grid grid-cols-2 gap-5">
               <div className="space-y-2">
                 <Label>Nave *</Label>
-                <Input value={form.nave} onChange={(e) => update("nave", e.target.value)} placeholder="Es. Bangkok Express" />
+                <Input value={form.nave} onChange={(e) => update("nave", e.target.value)} placeholder="Es. Bangkok Express" className="h-10" />
               </div>
               <div className="space-y-2">
                 <Label>Viaggio *</Label>
-                <Input value={form.viaggio} onChange={(e) => update("viaggio", e.target.value)} placeholder="Es. 2614E" />
+                <Input value={form.viaggio} onChange={(e) => update("viaggio", e.target.value)} placeholder="Es. 2614E" className="h-10" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-5">
               <div className="space-y-2">
                 <Label>Compagnia</Label>
                 <Select value={form.compagnia} onValueChange={(v) => update("compagnia", v ?? "")}>
-                  <SelectTrigger><SelectValue placeholder="Seleziona" /></SelectTrigger>
+                  <SelectTrigger className="h-10"><SelectValue placeholder="Seleziona" /></SelectTrigger>
                   <SelectContent>
                     {COMPAGNIE.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
@@ -193,17 +193,17 @@ export function NuovaPraticaDialog() {
               </div>
               <div className="space-y-2">
                 <Label>MMSI</Label>
-                <Input value={form.mmsi} onChange={(e) => update("mmsi", e.target.value)} placeholder="Es. 477123456" />
+                <Input value={form.mmsi} onChange={(e) => update("mmsi", e.target.value)} placeholder="Es. 477123456" className="h-10" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-5">
               <div className="space-y-2">
                 <Label>B/L Number *</Label>
-                <Input value={form.blNumber} onChange={(e) => update("blNumber", e.target.value)} placeholder="Es. MEDU123456789" />
+                <Input value={form.blNumber} onChange={(e) => update("blNumber", e.target.value)} placeholder="Es. MEDU123456789" className="h-10" />
               </div>
               <div className="space-y-2">
                 <Label>Booking N° *</Label>
-                <Input value={form.bookingNumber} onChange={(e) => update("bookingNumber", e.target.value)} placeholder="Es. FB240598776" />
+                <Input value={form.bookingNumber} onChange={(e) => update("bookingNumber", e.target.value)} placeholder="Es. FB240598776" className="h-10" />
               </div>
             </div>
           </div>
@@ -211,16 +211,16 @@ export function NuovaPraticaDialog() {
 
         {/* Step 2: Container */}
         {step === 2 && (
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-3 gap-4">
+          <div className="space-y-5 py-3">
+            <div className="grid grid-cols-3 gap-5">
               <div className="space-y-2">
                 <Label>N° container *</Label>
-                <Input type="number" min={1} value={form.containerCount} onChange={(e) => update("containerCount", parseInt(e.target.value) || 0)} />
+                <Input type="number" min={1} value={form.containerCount} onChange={(e) => update("containerCount", parseInt(e.target.value) || 0)} className="h-10" />
               </div>
               <div className="space-y-2">
                 <Label>Tipo *</Label>
                 <Select value={form.containerType} onValueChange={(v) => update("containerType", v ?? "40HC")}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {CONTAINER_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </SelectContent>
@@ -228,18 +228,18 @@ export function NuovaPraticaDialog() {
               </div>
               <div className="space-y-2">
                 <Label>Peso (kg) *</Label>
-                <Input type="number" min={0} value={form.pesoKg || ""} onChange={(e) => update("pesoKg", parseFloat(e.target.value) || 0)} placeholder="Es. 18500" />
+                <Input type="number" min={0} value={form.pesoKg || ""} onChange={(e) => update("pesoKg", parseFloat(e.target.value) || 0)} placeholder="Es. 18500" className="h-10" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-5">
               <div className="space-y-2">
                 <Label>Valore merce (€)</Label>
-                <Input type="number" min={0} value={form.valoreEur || ""} onChange={(e) => update("valoreEur", parseFloat(e.target.value) || 0)} placeholder="Es. 85000" />
+                <Input type="number" min={0} value={form.valoreEur || ""} onChange={(e) => update("valoreEur", parseFloat(e.target.value) || 0)} placeholder="Es. 85000" className="h-10" />
               </div>
               <div className="space-y-2">
                 <Label>Urgenza</Label>
                 <Select value={form.urgenza} onValueChange={(v) => update("urgenza", v ?? "normale")}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {URGENZE.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                   </SelectContent>
@@ -248,40 +248,52 @@ export function NuovaPraticaDialog() {
             </div>
             <div className="space-y-2">
               <Label>Descrizione merce</Label>
-              <Textarea value={form.descrizioneMerce} onChange={(e) => update("descrizioneMerce", e.target.value)} placeholder="Es. Tessuti misti cotone-poliestere, HS Code 5208.32" rows={3} />
+              <Textarea value={form.descrizioneMerce} onChange={(e) => update("descrizioneMerce", e.target.value)} placeholder="Es. Tessuti misti cotone-poliestere, HS Code 5208.32" rows={4} className="min-h-[100px]" />
             </div>
           </div>
         )}
 
         {/* Step 3: Date */}
         {step === 3 && (
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-5 py-3">
+            <div className="grid grid-cols-2 gap-5">
               <div className="space-y-2">
                 <Label>ETD Cina *</Label>
-                <Input type="date" value={form.etdCina} onChange={(e) => update("etdCina", e.target.value)} />
+                <Input type="date" value={form.etdCina} onChange={(e) => update("etdCina", e.target.value)} className="h-10" />
               </div>
               <div className="space-y-2">
                 <Label>ETA Italia *</Label>
-                <Input type="date" value={form.etaItalia} onChange={(e) => update("etaItalia", e.target.value)} />
+                <Input type="date" value={form.etaItalia} onChange={(e) => update("etaItalia", e.target.value)} className="h-10" />
               </div>
             </div>
             <div className="space-y-2">
               <Label>Operatore assegnato</Label>
-              <Input value={form.operatore} onChange={(e) => update("operatore", e.target.value)} placeholder="Es. Luca De Marco" />
+              <Input value={form.operatore} onChange={(e) => update("operatore", e.target.value)} placeholder="Es. Luca De Marco" className="h-10" />
             </div>
 
             {/* Riepilogo */}
-            <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
-              <p className="text-sm font-medium">Riepilogo</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span>Cliente:</span><span className="font-medium text-foreground">{form.cliente || "—"}</span>
-                <span>Nave:</span><span className="font-medium text-foreground">{form.nave || "—"} · {form.viaggio || ""}</span>
-                <span>Container:</span><span className="font-medium text-foreground">{form.containerCount}× {form.containerType}</span>
-                <span>Porto:</span><span className="font-medium text-foreground">{form.portoCarico} → {form.portoScarico}</span>
-                <span>ETD:</span><span className="font-medium text-foreground">{form.etdCina ? new Date(form.etdCina).toLocaleDateString("it-IT") : "—"}</span>
-                <span>ETA:</span><span className="font-medium text-foreground">{form.etaItalia ? new Date(form.etaItalia).toLocaleDateString("it-IT") : "—"}</span>
+            <div className="rounded-lg border bg-muted/30 p-5 space-y-3">
+              <p className="text-sm font-semibold">Riepilogo pratica</p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                <span className="text-muted-foreground">Cliente:</span><span className="font-medium">{form.cliente || "—"}</span>
+                <span className="text-muted-foreground">Shipper:</span><span className="font-medium">{form.shipper || "—"}</span>
+                <span className="text-muted-foreground">Nave:</span><span className="font-medium">{form.nave || "—"} · {form.viaggio || ""}</span>
+                <span className="text-muted-foreground">Compagnia:</span><span className="font-medium">{form.compagnia || "—"}</span>
+                <span className="text-muted-foreground">B/L:</span><span className="font-medium">{form.blNumber || "—"}</span>
+                <span className="text-muted-foreground">Booking:</span><span className="font-medium">{form.bookingNumber || "—"}</span>
+                <span className="text-muted-foreground">Container:</span><span className="font-medium">{form.containerCount}× {form.containerType}</span>
+                <span className="text-muted-foreground">Peso:</span><span className="font-medium">{form.pesoKg ? `${form.pesoKg.toLocaleString("it-IT")} kg` : "—"}</span>
+                <span className="text-muted-foreground">Porto:</span><span className="font-medium">{form.portoCarico} → {form.portoScarico}</span>
+                <span className="text-muted-foreground">Urgenza:</span><span className="font-medium">{form.urgenza}</span>
+                <span className="text-muted-foreground">ETD:</span><span className="font-medium">{form.etdCina ? new Date(form.etdCina).toLocaleDateString("it-IT") : "—"}</span>
+                <span className="text-muted-foreground">ETA:</span><span className="font-medium">{form.etaItalia ? new Date(form.etaItalia).toLocaleDateString("it-IT") : "—"}</span>
               </div>
+              {form.descrizioneMerce && (
+                <>
+                  <span className="text-muted-foreground">Merce:</span>
+                  <span className="font-medium col-span-2">{form.descrizioneMerce}</span>
+                </>
+              )}
             </div>
           </div>
         )}
