@@ -43,29 +43,30 @@ export default function AIConsolePage() {
   const simulateRun = (agentId: string) => {
     setRunningAgent(agentId);
     setSimStream("");
+    const agent = AGENTS.find((a) => a.id === agentId);
     const outputs = [
-      "Analisi in corso…",
-      "Recupero dati dal contesto pratica…",
-      "Elaborazione con modello Quixel Ai…",
-      "Validazione output in corso…",
-      "Master Orchestrator: verifico coerenza con stato pratica…",
+      `📂 Recupero dati pratica PF-2026-0148…`,
+      `🔍 ${agent?.label || "Agente"}: analisi contesto e documenti…`,
+      `🧠 Elaborazione con modello Quixel Ai…`,
+      `✅ Validazione output completata`,
+      `🛡️ Master Orchestrator: verifica coerenza con stato pratica…`,
     ];
     let i = 0;
     const int = setInterval(() => {
       if (i < outputs.length) {
-        setSimStream((s) => s + `\n> ${outputs[i]}`);
+        const line = outputs[i];
+        setSimStream((s) => s + (s ? "\n" : "") + `> ${line}`);
         i++;
       } else {
         setSimStream(
           (s) =>
             s +
-            "\n\n✅ Operazione completata. Output valido. " +
-            "Master Orchestrator: APPROVATO. Stato pratica aggiornato.",
+            "\n\n✅ Operazione completata. Output valido e coerente.\n🛡️ Master Orchestrator: APPROVATO — Stato pratica aggiornato.",
         );
         clearInterval(int);
         setRunningAgent(null);
       }
-    }, 600);
+    }, 700);
   };
 
   return (
